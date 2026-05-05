@@ -150,6 +150,7 @@ export default function ProductDetailPage() {
             <button
               className="button button--primary"
               type="button"
+              disabled={product.soldOut}
               onClick={() =>
                 addToCart({
                   ...product,
@@ -158,9 +159,13 @@ export default function ProductDetailPage() {
                 })
               }
             >
-              Add to Cart
+              {product.soldOut ? "Sold Out" : "Add to Cart"}
             </button>
           </div>
+
+          {product.soldOut ? (
+            <p className="form-token">This model is currently sold out and unavailable to order.</p>
+          ) : null}
 
           <div className="feature-badges">
             {product.features.map((feature) => (

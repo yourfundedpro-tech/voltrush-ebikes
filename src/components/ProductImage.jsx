@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 function buildFallbackImage({ name, category, accent }) {
   const safeName = name ?? "VoltRush";
   const safeCategory = category ?? "Electric Mobility";
+  const accentColor = "#ff3030";
 
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="${safeName}">
@@ -13,30 +14,30 @@ function buildFallbackImage({ name, category, accent }) {
         </linearGradient>
       </defs>
       <rect width="1200" height="900" fill="url(#panel)" />
-      <circle cx="600" cy="350" r="250" fill="#ff3030" opacity="0.12" />
+      <circle cx="600" cy="350" r="250" fill="${accentColor}" opacity="0.12" />
       <rect x="96" y="96" width="1008" height="708" rx="40" fill="none" stroke="rgba(255,255,255,0.12)" />
-      <foreignObject x="140" y="120" width="920" height="200">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: 'Segoe UI', sans-serif; color: #ff5252; font-size: 34px; letter-spacing: 0.32em; text-transform: uppercase;">
-          ${safeCategory}
-        </div>
-      </foreignObject>
-      <foreignObject x="140" y="240" width="920" height="180">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: 'Segoe UI', sans-serif; color: white; font-size: 82px; font-weight: 700; line-height: 1.02;">
-          ${safeName}
-        </div>
-      </foreignObject>
-      <rect x="180" y="500" width="840" height="16" rx="8" fill="#2a2a2a" />
-      <rect x="180" y="500" width="540" height="16" rx="8" fill="#ff3030" />
-      <foreignObject x="140" y="560" width="920" height="140">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: 'Segoe UI', sans-serif; color: #d9d9d9; font-size: 30px; line-height: 1.5;">
-          Image source unavailable. VoltRush fallback artwork is shown so the storefront stays complete.
-        </div>
-      </foreignObject>
-      <foreignObject x="140" y="720" width="920" height="60">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: 'Segoe UI', sans-serif; color: #ffffff; font-size: 24px;">
-          VoltRush reserve visual
-        </div>
-      </foreignObject>
+      <text x="140" y="170" fill="${accentColor}" font-family="Segoe UI, Arial, sans-serif" font-size="34" letter-spacing="8">
+        ${safeCategory.toUpperCase()}
+      </text>
+      <text x="140" y="280" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="74" font-weight="700">
+        ${safeName}
+      </text>
+      <g transform="translate(130 355)">
+        <rect x="0" y="0" width="940" height="220" rx="30" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.08)" />
+        <circle cx="180" cy="160" r="92" fill="none" stroke="#ffffff" stroke-width="12" />
+        <circle cx="760" cy="160" r="92" fill="none" stroke="#ffffff" stroke-width="12" />
+        <path d="M180 160 L360 70 L475 160 L610 65 L760 160" fill="none" stroke="${accentColor}" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M360 70 L300 160 L475 160" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M610 65 L575 160" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" />
+        <path d="M560 52 L650 52" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" />
+        <path d="M290 55 L350 45" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" />
+      </g>
+      <text x="140" y="690" fill="#d9d9d9" font-family="Segoe UI, Arial, sans-serif" font-size="28">
+        Product photo unavailable. VoltRush reserve artwork is shown instead.
+      </text>
+      <text x="140" y="748" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="24">
+        VoltRush reserve visual
+      </text>
     </svg>
   `;
 

@@ -9,7 +9,10 @@ export default function ProductCard({ product }) {
       to={`/bikes/${product.slug}`}
       aria-label={`View ${product.name}`}
     >
-      <div className="product-card__sale-badge">{product.salePercent}% OFF</div>
+      <div className="product-card__badges">
+        <div className="product-card__sale-badge">{product.salePercent}% OFF</div>
+        {product.soldOut ? <div className="product-card__stock-badge">Sold Out</div> : null}
+      </div>
 
       {product.image ? (
         <div className="product-card__image-wrap">
@@ -53,7 +56,9 @@ export default function ProductCard({ product }) {
             <strong>${product.price.toLocaleString()}</strong>
             <span>${product.originalPrice.toLocaleString()}</span>
           </div>
-          <span className="product-card__cta">View Item</span>
+          <span className="product-card__cta">
+            {product.soldOut ? "View Details" : "View Item"}
+          </span>
         </div>
       </div>
     </Link>

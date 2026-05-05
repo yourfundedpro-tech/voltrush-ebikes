@@ -301,6 +301,7 @@ const rawProducts = [
     image: ultraBeeColors[0].image,
     gallery: ultraBeeColors.map((variant) => variant.image),
     colorOptions: ultraBeeColors,
+    soldOut: true,
     description:
       "The Ultra Bee sits above the Light Bee with more power, more range, and a larger chassis, making it a favorite for riders stepping into harder trail and motocross terrain.",
     features: [
@@ -367,6 +368,7 @@ const rawProducts = [
     image: eboxColors[0].image,
     gallery: eboxColors.map((variant) => variant.image),
     colorOptions: eboxColors,
+    soldOut: true,
     description:
       "The EBOX 2 V2 has become a go-to electric minibike for riders who want a small package with a strong punch, simple adjustability, and a ton of personality.",
     features: [

@@ -355,9 +355,7 @@ app.post("/api/payments/create-intent", authMiddleware, async (req, res) => {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totals.amount,
       currency: STRIPE_CURRENCY,
-      automatic_payment_methods: {
-        enabled: true,
-      },
+      payment_method_types: ["card"],
       receipt_email: req.user.email,
       metadata: {
         userId: String(req.user.id),
