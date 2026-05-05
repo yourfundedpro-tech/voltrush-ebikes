@@ -21,16 +21,34 @@ export default function AccountDashboardPage() {
     orders: [],
     notifications: [],
     supportTickets: [],
+    managedOrders: [],
   });
   const [supportForm, setSupportForm] = useState({ subject: "", message: "" });
   const [feedback, setFeedback] = useState("");
+  const [ownerForms, setOwnerForms] = useState({});
+  const [ownerFeedback, setOwnerFeedback] = useState("");
+
+  function syncOwnerForms(data) {
+    setOwnerForms(
+      Object.fromEntries(
+        (data.managedOrders ?? []).map((order) => [
+          order.id,
+          {
+            status: order.status,
+            message: `Your order ${order.order_number} is currently ${order.status}.`,
+          },
+        ]),
+      ),
+    );
+  }
+
+  async function loadDashboard() {
+    const data = await apiRequest("/api/account/dashboard", { method: "GET" });
+    setDashboard(data);
+    syncOwnerForms(data);
+  }
 
   useEffect(() => {
-    async function loadDashboard() {
-      const data = await apiRequest("/api/account/dashboard", { method: "GET" });
-      setDashboard(data);
-    }
-
     loadDashboard();
   }, []);
 
@@ -49,6 +67,23 @@ export default function AccountDashboardPage() {
     }));
     setSupportForm({ subject: "", message: "" });
     setFeedback("Support request submitted.");
+  }
+
+  async function handleOwnerUpdate(event, orderId) {
+    event.preventDefault();
+    setOwnerFeedback("");
+
+    const form = ownerForms[orderId];
+
+    const data = await apiRequest(`/api/admin/orders/${orderId}/update`, {
+      method: "POST",
+      body: JSON.stringify(form),
+    });
+
+    if (data.success) {
+      setOwnerFeedback("Order update sent successfully.");
+      await loadDashboard();
+    }
   }
 
   return (
@@ -160,6 +195,77 @@ export default function AccountDashboardPage() {
               ))}
             </div>
           </article>
+
+          {user?.isOwner ? (
+            <article className="dashboard-card dashboard-card--wide">
+              <div className="dashboard-card__header">
+                <h2>Owner Panel</h2>
+                <span>Update customer order progress</span>
+              </div>
+              {ownerFeedback ? <p className="form-success">{ownerFeedback}</p> : null}
+              <div className="owner-order-list">
+                {dashboard.managedOrders.map((order) => (
+                  <form
+                    className="dashboard-item owner-order-card"
+                    key={order.id}
+                    onSubmit={(event) => handleOwnerUpdate(event, order.id)}
+                  >
+                    <div className="dashboard-item__row">
+                      <strong>{order.order_number}</strong>
+                      <span className={`status-pill status-pill--${order.status}`}>
+                        {order.status}
+                      </span>
+                    </div>
+                    <p>
+                      {order.customer_name} • {order.customer_email}
+                    </p>
+                    <ul className="dashboard-inline-list">
+                      {order.items.map((item) => (
+                        <li key={`${order.id}-${item.product_name}`}>
+                          {item.product_name}
+                          {item.product_color ? ` (${item.product_color})` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                    <select
+                      className="owner-select"
+                      value={ownerForms[order.id]?.status ?? order.status}
+                      onChange={(event) =>
+                        setOwnerForms((current) => ({
+                          ...current,
+                          [order.id]: {
+                            ...current[order.id],
+                            status: event.target.value,
+                          },
+                        }))
+                      }
+                    >
+                      <option value="processing">Processing</option>
+                      <option value="shipped">Shipped</option>
+                      <option value="delivered">Delivered</option>
+                    </select>
+                    <textarea
+                      rows="4"
+                      placeholder="Message shown to the customer"
+                      value={ownerForms[order.id]?.message ?? ""}
+                      onChange={(event) =>
+                        setOwnerForms((current) => ({
+                          ...current,
+                          [order.id]: {
+                            ...current[order.id],
+                            message: event.target.value,
+                          },
+                        }))
+                      }
+                    />
+                    <button className="button button--primary" type="submit">
+                      Save Update
+                    </button>
+                  </form>
+                ))}
+              </div>
+            </article>
+          ) : null}
         </div>
       </div>
     </section>

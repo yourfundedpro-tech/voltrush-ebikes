@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../state/AuthContext";
 
 export default function SignupPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -32,7 +33,7 @@ export default function SignupPage() {
         password: form.password,
       });
       setNotice(data.confirmation ?? "");
-      navigate("/account");
+      navigate(location.state?.from ?? "/account");
     } catch (requestError) {
       setError(requestError.message);
     } finally {

@@ -32,8 +32,7 @@ export default function LoginPage() {
           <p className="eyebrow">Login</p>
           <h1>Welcome back.</h1>
           <p className="summary-note">
-            Use the seeded demo account `demo@voltrush.com` with password `DemoPass123!`
-            or create a new account.
+            Sign in to review orders, track deliveries, and manage your VoltRush account.
           </p>
           {error ? <p className="form-error">{error}</p> : null}
           <input

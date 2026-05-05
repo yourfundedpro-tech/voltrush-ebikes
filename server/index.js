@@ -20,6 +20,9 @@ const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY || "";
 const STRIPE_CURRENCY = (process.env.STRIPE_CURRENCY || "usd").toLowerCase();
 const STRIPE_MERCHANT_COUNTRY = (process.env.STRIPE_MERCHANT_COUNTRY || "US").toUpperCase();
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const isProduction = process.env.NODE_ENV === "production";
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@voltrush.com";
+const OWNER_EMAIL = (process.env.OWNER_EMAIL || "").toLowerCase();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const distPath = path.resolve(__dirname, "../dist");
@@ -174,7 +177,20 @@ function sanitizeUser(user) {
     email: user.email,
     emailConfirmed: Boolean(user.email_confirmed),
     createdAt: user.created_at,
+    isOwner: Boolean(OWNER_EMAIL && user.email?.toLowerCase() === OWNER_EMAIL),
   };
+}
+
+function isOwnerUser(userLike) {
+  return Boolean(OWNER_EMAIL && userLike?.email?.toLowerCase() === OWNER_EMAIL);
+}
+
+function ownerOnlyMiddleware(req, res, next) {
+  if (!isOwnerUser(req.user)) {
+    return res.status(403).json({ message: "Owner access required." });
+  }
+
+  return next();
 }
 
 function authMiddleware(req, res, next) {
@@ -258,7 +274,9 @@ app.post("/api/auth/register", (req, res) => {
 
   return res.status(201).json({
     user: sanitizeUser(user),
-    confirmation: "Demo mode: email confirmation is marked optional and not enforced.",
+    confirmation: isProduction
+      ? "Your account has been created successfully."
+      : "Your account has been created successfully.",
   });
 });
 
@@ -283,6 +301,12 @@ app.post("/api/auth/forgot-password", (req, res) => {
   const { email } = req.body;
   const user = getUserByEmail(email ?? "");
 
+  if (isProduction) {
+    return res.json({
+      message: `Password reset requests are handled by support right now. Please contact ${SUPPORT_EMAIL}.`,
+    });
+  }
+
   if (!user) {
     return res.json({
       message: "If that email exists, a reset token has been generated.",
@@ -298,7 +322,7 @@ app.post("/api/auth/forgot-password", (req, res) => {
   ).run(user.id, token, expiresAt);
 
   return res.json({
-    message: "Password reset token created. In production this would be emailed.",
+    message: "Password reset token created for local testing.",
     resetToken: token,
   });
 });
@@ -425,12 +449,84 @@ app.get("/api/account/dashboard", authMiddleware, (req, res) => {
     )
     .all(req.user.id);
 
+  const managedOrders = isOwnerUser(user)
+    ? db
+        .prepare(
+          `
+            SELECT
+              orders.id,
+              orders.order_number,
+              orders.total_amount,
+              orders.status,
+              orders.shipping_address,
+              orders.created_at,
+              users.name AS customer_name,
+              users.email AS customer_email
+            FROM orders
+            JOIN users ON users.id = orders.user_id
+            ORDER BY orders.created_at DESC
+          `,
+        )
+        .all()
+        .map((order) => ({
+          ...order,
+          items: db
+            .prepare(
+              "SELECT product_name, product_color, quantity, unit_price FROM order_items WHERE order_id = ?",
+            )
+            .all(order.id),
+        }))
+    : [];
+
   res.json({
     user: sanitizeUser(user),
     orders,
     supportTickets: tickets,
     notifications,
+    managedOrders,
   });
+});
+
+app.post("/api/admin/orders/:orderId/update", authMiddleware, ownerOnlyMiddleware, (req, res) => {
+  const { orderId } = req.params;
+  const { status, message } = req.body;
+  const normalizedStatus = String(status ?? "").trim().toLowerCase();
+  const trimmedMessage = String(message ?? "").trim();
+  const allowedStatuses = new Set(["processing", "shipped", "delivered", "open"]);
+
+  if (!allowedStatuses.has(normalizedStatus)) {
+    return res.status(400).json({ message: "Please choose a valid order status." });
+  }
+
+  if (!trimmedMessage) {
+    return res.status(400).json({ message: "Please enter an update message for the customer." });
+  }
+
+  const order = db
+    .prepare(
+      `
+        SELECT orders.id, orders.user_id, orders.order_number
+        FROM orders
+        WHERE orders.id = ?
+      `,
+    )
+    .get(orderId);
+
+  if (!order) {
+    return res.status(404).json({ message: "Order not found." });
+  }
+
+  db.prepare("UPDATE orders SET status = ? WHERE id = ?").run(normalizedStatus, order.id);
+  db.prepare(
+    "INSERT INTO notifications (user_id, title, body, type) VALUES (?, ?, ?, ?)",
+  ).run(
+    order.user_id,
+    `Order ${order.order_number} update`,
+    trimmedMessage,
+    "order",
+  );
+
+  return res.json({ success: true });
 });
 
 app.post("/api/support", authMiddleware, (req, res) => {

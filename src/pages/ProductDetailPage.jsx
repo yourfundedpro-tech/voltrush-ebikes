@@ -1,18 +1,23 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import BikeVisual from "../components/BikeVisual";
 import ProductImage from "../components/ProductImage";
 import Stars from "../components/Stars";
 import { products } from "../data/products";
+import { useAuth } from "../state/AuthContext";
 import { useCart } from "../state/CartContext";
 
 export default function ProductDetailPage() {
   const { slug } = useParams();
   const { addToCart } = useCart();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const product = products.find((item) => item.slug === slug);
   const [selectedColorId, setSelectedColorId] = useState(
     product?.colorOptions?.[0]?.id ?? null,
   );
+  const imageShellRef = useRef(null);
 
   useEffect(() => {
     setSelectedColorId(product?.colorOptions?.[0]?.id ?? null);
@@ -36,13 +41,32 @@ export default function ProductDetailPage() {
     null;
   const displayImage = selectedColor?.image ?? product.image;
 
+  function handleAddToCart() {
+    if (!isAuthenticated) {
+      navigate("/signup", { state: { from: location.pathname } });
+      return;
+    }
+
+    addToCart(
+      {
+        ...product,
+        selectedColor: selectedColor?.name ?? product.color,
+        image: displayImage,
+      },
+      {
+        image: displayImage,
+        fromRect: imageShellRef.current?.getBoundingClientRect() ?? null,
+      },
+    );
+  }
+
   return (
     <section className="section page-top">
       <div className="container product-detail">
         <div className="card-panel product-detail__visual">
           {displayImage ? (
             <>
-              <div className="product-detail__image-shell">
+              <div className="product-detail__image-shell" ref={imageShellRef}>
                 <ProductImage
                   className="product-detail__image"
                   src={displayImage}
@@ -151,13 +175,7 @@ export default function ProductDetailPage() {
               className="button button--primary"
               type="button"
               disabled={product.soldOut}
-              onClick={() =>
-                addToCart({
-                  ...product,
-                  selectedColor: selectedColor?.name ?? product.color,
-                  image: displayImage,
-                })
-              }
+              onClick={handleAddToCart}
             >
               {product.soldOut ? "Sold Out" : "Add to Cart"}
             </button>
@@ -165,6 +183,11 @@ export default function ProductDetailPage() {
 
           {product.soldOut ? (
             <p className="form-token">This model is currently sold out and unavailable to order.</p>
+          ) : null}
+          {!isAuthenticated && !product.soldOut ? (
+            <p className="summary-note">
+              You&apos;ll be asked to create an account before adding this bike to your basket.
+            </p>
           ) : null}
 
           <div className="feature-badges">
@@ -178,6 +201,26 @@ export default function ProductDetailPage() {
             <p>{product.review.quote}</p>
             <strong>{product.review.author}</strong>
           </article>
+        </div>
+      </div>
+
+      <div className="mobile-buybar">
+        <div className="mobile-buybar__content container">
+          <div className="mobile-buybar__info">
+            <strong>{product.name}</strong>
+            <span>
+              ${product.price.toLocaleString()}
+              {selectedColor?.name ? ` • ${selectedColor.name}` : ""}
+            </span>
+          </div>
+          <button
+            className="button button--primary"
+            type="button"
+            disabled={product.soldOut}
+            onClick={handleAddToCart}
+          >
+            {product.soldOut ? "Sold Out" : "Buy Now"}
+          </button>
         </div>
       </div>
     </section>

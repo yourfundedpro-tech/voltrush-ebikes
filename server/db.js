@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 const dataDir = path.join(__dirname, "data");
 const dbPath = process.env.DATABASE_PATH || path.join(dataDir, "voltrush.sqlite");
 const schemaPath = path.join(__dirname, "schema.sql");
+const isProduction = process.env.NODE_ENV === "production";
 
 fs.mkdirSync(dataDir, { recursive: true });
 
@@ -18,7 +19,10 @@ db.pragma("journal_mode = WAL");
 const schema = fs.readFileSync(schemaPath, "utf8");
 db.exec(schema);
 
-seedDatabase();
+if (!isProduction) {
+  seedDatabase();
+}
+
 ensurePaymentRecords();
 
 function seedDatabase() {

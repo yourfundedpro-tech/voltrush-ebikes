@@ -31,13 +31,13 @@ export default function ForgotPasswordPage() {
           <p className="eyebrow">Reset Password</p>
           <h1>Forgot your password?</h1>
           <p className="summary-note">
-            Enter your email and we’ll generate a reset token for this demo build.
+            Enter your email and we&apos;ll help you reset your password.
           </p>
           {error ? <p className="form-error">{error}</p> : null}
           {message ? <p className="form-success">{message}</p> : null}
           {token ? (
             <p className="form-token">
-              Demo reset token: <code>{token}</code>
+              Reset token: <code>{token}</code>
             </p>
           ) : null}
           <input
@@ -47,7 +47,7 @@ export default function ForgotPasswordPage() {
             onChange={(event) => setEmail(event.target.value)}
           />
           <button className="button button--primary button--block" type="submit">
-            Generate Reset Token
+            Send Reset Instructions
           </button>
           <div className="auth-links">
             <Link to="/reset-password">Already have a token?</Link>

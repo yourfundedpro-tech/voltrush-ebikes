@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../state/AuthContext";
 import { useCart } from "../state/CartContext";
@@ -11,11 +11,16 @@ const navItems = [
 ];
 
 export default function Navbar() {
-  const { summary } = useCart();
+  const { summary, registerCartTarget, cartPulse } = useCart();
   const { isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const cartRef = useRef(null);
+
+  useEffect(() => {
+    registerCartTarget(cartRef.current);
+  }, [registerCartTarget]);
 
   function handleSearch(event) {
     event.preventDefault();
@@ -38,6 +43,19 @@ export default function Navbar() {
             VoltRush
             <small>Electric Mobility</small>
           </span>
+        </Link>
+
+        <Link
+          ref={cartRef}
+          className={`cart-icon-mobile ${cartPulse ? "cart-chip--pulse" : ""}`}
+          to="/cart"
+          onClick={() => setMenuOpen(false)}
+          aria-label={`Open cart with ${summary.itemCount} item${summary.itemCount === 1 ? "" : "s"}`}
+        >
+          <span className="cart-icon-mobile__glyph" aria-hidden="true">
+            🛒
+          </span>
+          <span className="cart-icon-mobile__count">{summary.itemCount}</span>
         </Link>
 
         <button
@@ -102,7 +120,11 @@ export default function Navbar() {
             )}
           </div>
 
-          <Link className="cart-chip" to="/cart" onClick={() => setMenuOpen(false)}>
+          <Link
+            className={`cart-chip ${cartPulse ? "cart-chip--pulse" : ""}`}
+            to="/cart"
+            onClick={() => setMenuOpen(false)}
+          >
             Cart
             <span>{summary.itemCount}</span>
           </Link>

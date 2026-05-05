@@ -69,14 +69,14 @@ const ultraBeeColors = [
     name: "Forest Green",
     hex: "#4f6b4c",
     image:
-      "https://www.sur-ron-usa.com/wp-content/uploads/2023/03/sur-ron-ultra-bee-forest-green-1.png",
+      "https://www.sur-ron-usa.com/wp-content/uploads/2024/07/sur-ron-ultra-bee-forest-green-1-510x341.png",
   },
   {
     id: "pure-black",
     name: "Pure Black",
     hex: "#0e0e0e",
     image:
-      "https://www.sur-ron-usa.com/wp-content/uploads/2023/03/sur-ron-ultra-bee-pure-black-eddition.png",
+      "https://www.sur-ron-usa.com/wp-content/uploads/2024/07/sur-ron-ultra-bee-pure-black-eddition-510x269.png",
   },
 ];
 
@@ -110,28 +110,28 @@ const eboxColors = [
     name: "Black",
     hex: "#111111",
     image:
-      "https://eboxdragster.com/wp-content/uploads/2024/08/EBOX2V2-Black.webp",
+      "https://www.citygrounds.com/cdn/shop/files/2024-EBOX-2-v2-Black-2500x2500hero.jpg?v=1719953601",
   },
   {
     id: "orange",
     name: "Orange",
     hex: "#ff7b18",
     image:
-      "https://eboxdragster.com/wp-content/uploads/2024/08/EBOX2V2-Black.webp",
+      "https://www.citygrounds.com/cdn/shop/files/2024-EBOX-2-v2-Orange-2500x2500hero.jpg?v=1719953601",
   },
   {
     id: "teal",
     name: "Teal",
     hex: "#24c8b4",
     image:
-      "https://eboxdragster.com/wp-content/uploads/2024/08/EBOX2V2-Black.webp",
+      "https://www.citygrounds.com/cdn/shop/files/2024-EBOX-2-v2-Teal-2500x2500hero.jpg?v=1719953602",
   },
   {
     id: "white",
     name: "White",
     hex: "#f4f4f4",
     image:
-      "https://eboxdragster.com/wp-content/uploads/2024/08/EBOX2V2-Black.webp",
+      "https://www.citygrounds.com/cdn/shop/files/2024-EBOX-2-v2-White-2500x2500hero.jpg?v=1719953602",
   },
 ];
 
@@ -283,40 +283,6 @@ const rawProducts = [
     },
   },
   {
-    id: 4,
-    slug: "sur-ron-ultra-bee",
-    name: "Sur-Ron Ultra Bee",
-    brand: "Sur-Ron",
-    category: "Bike",
-    tagline: "A mid-size powerhouse built for riders who want more torque and full-size presence.",
-    price: 5000,
-    range: 87,
-    speed: 56,
-    motor: "12.5kW peak output powertrain",
-    battery: "74V high-capacity power system",
-    weight: "85 kg",
-    frame: "Performance off-road chassis",
-    color: "Forest Green",
-    accent: "linear-gradient(135deg, #5d7b52 0%, #111111 100%)",
-    image: ultraBeeColors[0].image,
-    gallery: ultraBeeColors.map((variant) => variant.image),
-    colorOptions: ultraBeeColors,
-    soldOut: true,
-    description:
-      "The Ultra Bee sits above the Light Bee with more power, more range, and a larger chassis, making it a favorite for riders stepping into harder trail and motocross terrain.",
-    features: [
-      "12.5kW peak power",
-      "Traction control system",
-      "Sport / Eco / Daily ride modes",
-      "Forest Green and Pure Black finishes",
-    ],
-    review: {
-      quote:
-        "It has the punch people want from an e-moto, but still feels controlled instead of wild in a bad way.",
-      author: "Weekend MX rider",
-    },
-  },
-  {
     id: 5,
     slug: "talaria-x3-xxx",
     name: "Talaria X3 (XXX)",
@@ -335,6 +301,7 @@ const rawProducts = [
     image: talariaX3Colors[0].image,
     gallery: talariaX3Colors.map((variant) => variant.image),
     colorOptions: talariaX3Colors,
+    soldOut: true,
     description:
       "The Talaria X3, also known as the XXX, is one of the most talked-about compact electric bikes thanks to its lower weight, punchy power delivery, and multiple battery options.",
     features: [
@@ -347,39 +314,6 @@ const rawProducts = [
       quote:
         "It's the bike people keep recommending when someone wants something lighter and easier to live with than a full-size e-moto.",
       author: "Urban rider review",
-    },
-  },
-  {
-    id: 6,
-    slug: "ebox-2-v2",
-    name: "EBOX 2 V2",
-    brand: "EBOX",
-    category: "Bike",
-    tagline: "A hugely popular electric minibike with big fun, easy tuning, and serious pit-bike energy.",
-    price: 1499,
-    range: 25,
-    speed: 32,
-    motor: "2.0kW electric powertrain",
-    battery: "60V 18.2Ah lithium battery",
-    weight: "45 kg",
-    frame: "Double cradle steel chassis",
-    color: "Black",
-    accent: "linear-gradient(135deg, #ff7b18 0%, #111111 100%)",
-    image: eboxColors[0].image,
-    gallery: eboxColors.map((variant) => variant.image),
-    colorOptions: eboxColors,
-    soldOut: true,
-    description:
-      "The EBOX 2 V2 has become a go-to electric minibike for riders who want a small package with a strong punch, simple adjustability, and a ton of personality.",
-    features: [
-      "Black, Orange, Teal, and White colorways",
-      "Top speed and acceleration adjustment",
-      "USD forks with mono rear shock",
-      "14-inch front and 12-inch rear wheel setup",
-    ],
-    review: {
-      quote: "For pure fun factor, it's hard to beat. Small bike, huge grin.",
-      author: "Pit bike rider",
     },
   },
   {
@@ -479,72 +413,6 @@ const rawProducts = [
       quote:
         "It's over the top in the best way. If someone wants a scooter that feels like a machine, this is the one they bring up.",
       author: "Performance scooter rider",
-    },
-  },
-  {
-    id: 10,
-    slug: "swytch-go-kit",
-    name: "Swytch GO Conversion Kit",
-    brand: "Swytch",
-    category: "Conversion Kit",
-    tagline: "One of the best-known conversion kits for turning a regular bike into an e-bike with minimal fuss.",
-    price: 349,
-    range: 60,
-    speed: 20,
-    motor: "Front motor wheel system",
-    battery: "Frame-mounted GO power pack",
-    weight: "Lightweight modular kit",
-    frame: "Fits step-over, folding, road, hybrid, and mountain bikes",
-    color: "Black Power Pack",
-    accent: "linear-gradient(135deg, #f24b3d 0%, #191919 100%)",
-    image: swytchGoColors[0].image,
-    gallery: swytchGoColors.map((variant) => variant.image),
-    colorOptions: swytchGoColors,
-    description:
-      "The Swytch GO kit is one of the most popular entry points into e-bike conversion, designed to work with a huge range of bike types while keeping installation approachable.",
-    features: [
-      "Up to 60 miles claimed range",
-      "Velcro strap frame connection",
-      "Fits mountain, road, hybrid, folding, and commuter bikes",
-      "Motor wheel, pedal sensor, and power pack included",
-    ],
-    review: {
-      quote:
-        "If you already love your bike and just want electric assist, Swytch is the name most people know first.",
-      author: "Cycling conversion review",
-    },
-  },
-  {
-    id: 11,
-    slug: "bafang-m625-kit",
-    name: "Bafang M625 Drive Kit",
-    brand: "Bafang",
-    category: "Conversion Kit",
-    tagline: "A high-torque mid-drive system for riders building powerful custom e-bikes.",
-    price: 1199,
-    range: 45,
-    speed: 28,
-    motor: "Mid-drive motor",
-    battery: "50.4V compatible system",
-    weight: "5.4 kg motor unit",
-    frame: "20 to 29-inch compatible bike builds",
-    color: "Black",
-    accent: "linear-gradient(135deg, #2e2e2e 0%, #7c0000 100%)",
-    image: bafangM625Colors[0].image,
-    gallery: bafangM625Colors.map((variant) => variant.image),
-    colorOptions: bafangM625Colors,
-    description:
-      "For riders building a serious custom e-bike, the Bafang M625 is a respected high-torque mid-drive system that pushes well beyond lightweight commuter conversion territory.",
-    features: [
-      "Up to 160Nm max torque",
-      "750W or 1000W rated power",
-      "20 to 29-inch wheel compatibility",
-      "IPX6-rated motor housing",
-    ],
-    review: {
-      quote:
-        "If someone wants real mid-drive power in a conversion build, Bafang is always part of the conversation.",
-      author: "Custom build community",
     },
   },
 ];
