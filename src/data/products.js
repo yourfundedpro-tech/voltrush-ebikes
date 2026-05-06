@@ -301,7 +301,7 @@ const rawProducts = [
     image: talariaX3Colors[0].image,
     gallery: talariaX3Colors.map((variant) => variant.image),
     colorOptions: talariaX3Colors,
-    soldOut: true,
+    soldOut: false,
     description:
       "The Talaria X3, also known as the XXX, is one of the most talked-about compact electric bikes thanks to its lower weight, punchy power delivery, and multiple battery options.",
     features: [
