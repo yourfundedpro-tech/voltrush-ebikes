@@ -31,6 +31,7 @@ export default function CheckoutPage() {
   const [status, setStatus] = useState("loading");
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
+  const [paypalNote, setPaypalNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [transferDetails, setTransferDetails] = useState(null);
   const [placedOrder, setPlacedOrder] = useState(null);
@@ -125,6 +126,10 @@ export default function CheckoutPage() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function handlePayPalPreview() {
+    setPaypalNote("PayPal is shown here as an option, but bank transfer is the working checkout right now.");
   }
 
   return (
@@ -267,8 +272,25 @@ export default function CheckoutPage() {
                 </p>
               </div>
 
+              <div className="paypal-note">
+                <strong>PayPal option</strong>
+                <p>
+                  PayPal is still shown as an option on the page, but the live working payment path for
+                  this site is bank transfer.
+                </p>
+                <div className="paypal-preview">
+                  <button className="paypal-preview__button paypal-preview__button--paypal" type="button" onClick={handlePayPalPreview}>
+                    PayPal
+                  </button>
+                  <button className="paypal-preview__button paypal-preview__button--card" type="button" onClick={handlePayPalPreview}>
+                    Debit or Credit Card
+                  </button>
+                </div>
+              </div>
+
               {error ? <p className="form-error">{error}</p> : null}
               {feedback ? <p className="form-success">{feedback}</p> : null}
+              {paypalNote ? <p className="summary-note">{paypalNote}</p> : null}
 
               {placedOrder ? (
                 <div className="bank-transfer-confirmation">

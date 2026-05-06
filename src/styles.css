@@ -892,6 +892,28 @@ main {
   gap: 0.8rem;
 }
 
+.paypal-preview {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.paypal-preview__button {
+  min-height: 54px;
+  border-radius: 14px;
+  font-weight: 700;
+}
+
+.paypal-preview__button--paypal {
+  background: #ffc439;
+  color: #003087;
+}
+
+.paypal-preview__button--card {
+  background: #2f3338;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .express-checkout-shell__header {
   display: flex;
   justify-content: space-between;
