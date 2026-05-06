@@ -13,6 +13,7 @@ import { useAuth } from "../state/AuthContext";
 import { useCart } from "../state/CartContext";
 
 const PAYPAL_STORAGE_KEY = "voltrush-paypal-checkout";
+const PAYPAL_TIMEOUT_MS = 15000;
 
 function formatMoney(value) {
   return `$${Number(value).toLocaleString(undefined, {
@@ -475,7 +476,8 @@ export default function CheckoutPage() {
     ? "Use your Railway live domain on Safari after registering that domain in Stripe payment method domains."
     : "";
 
-  async function startPayPalCheckout() {
+  async function startPayPalCheckout(event) {
+    event?.preventDefault();
     setPayPalError("");
 
     if (!isAuthenticated) {
@@ -511,10 +513,23 @@ export default function CheckoutPage() {
         }),
       );
 
-      const response = await apiRequest("/api/paypal/create-order", {
-        method: "POST",
-        body: JSON.stringify({ items }),
-      });
+      const response = await Promise.race([
+        apiRequest("/api/paypal/create-order", {
+          method: "POST",
+          body: JSON.stringify({ items }),
+        }),
+        new Promise((_, reject) =>
+          window.setTimeout(
+            () =>
+              reject(
+                new Error(
+                  "PayPal took too long to respond. Please try again once, then refresh the page if it still hangs.",
+                ),
+              ),
+            PAYPAL_TIMEOUT_MS,
+          ),
+        ),
+      ]);
 
       if (!response.approveLink) {
         throw new Error("PayPal approval link was not returned.");
@@ -526,6 +541,8 @@ export default function CheckoutPage() {
       setPayPalBusy(false);
     }
   }
+
+  const showPayPalOnly = paypalConfigured;
 
   return (
     <section className="section page-top">
@@ -570,6 +587,7 @@ export default function CheckoutPage() {
             )}
             {paypalConfigured ? (
               <>
+                <form className="checkout-paypal-form" onSubmit={startPayPalCheckout}>
                 <div className="checkout-block">
                   <div className="checkout-block__header">
                     <h2>PayPal checkout</h2>
@@ -636,27 +654,26 @@ export default function CheckoutPage() {
                 <div className="paypal-note">
                   <strong>PayPal is configured.</strong>
                   <p>
-                    You can still continue with PayPal even if Stripe is not configured on
-                    this machine yet.
+                    We will send you straight to PayPal and bring you back after payment.
                   </p>
                 </div>
                 {paypalError ? <p className="form-error">{paypalError}</p> : null}
                 <button
                   className="button button--primary"
-                  type="button"
-                  onClick={startPayPalCheckout}
+                  type="submit"
                   disabled={paypalBusy}
                 >
                   {paypalBusy ? "Redirecting to PayPal..." : `Pay ${formatMoney(totals.total)} with PayPal`}
                 </button>
+                </form>
               </>
             ) : null}
           </div>
         ) : null}
 
-        {status === "ready" && stripePromise && elementsOptions ? (
+        {status === "ready" && showPayPalOnly ? (
           <div className="checkout-payment-stack">
-            <div className="checkout-form">
+            <form className="checkout-form checkout-paypal-form" onSubmit={startPayPalCheckout}>
               <div className="section-heading">
                 <div>
                   <p className="eyebrow">PayPal</p>
@@ -737,13 +754,104 @@ export default function CheckoutPage() {
               {paypalError ? <p className="form-error">{paypalError}</p> : null}
               <button
                 className="button button--primary"
-                type="button"
-                onClick={startPayPalCheckout}
+                type="submit"
                 disabled={paypalBusy || !paypalConfigured}
               >
                 {paypalBusy ? "Redirecting to PayPal..." : `Pay ${formatMoney(totals.total)} with PayPal`}
               </button>
-            </div>
+            </form>
+          </div>
+        ) : null}
+
+        {status === "ready" && !showPayPalOnly && stripePromise && elementsOptions ? (
+          <div className="checkout-payment-stack">
+            <form className="checkout-form checkout-paypal-form" onSubmit={startPayPalCheckout}>
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">PayPal</p>
+                  <h1>Pay quickly with PayPal.</h1>
+                </div>
+              </div>
+
+              <div className="checkout-block">
+                <div className="checkout-block__header">
+                  <h2>Customer details</h2>
+                  <span>Used for delivery and receipt emails</span>
+                </div>
+                <div className="form-grid">
+                  <input
+                    type="text"
+                    placeholder="Full name"
+                    value={customerForm.fullName}
+                    onChange={(event) =>
+                      setCustomerForm((current) => ({
+                        ...current,
+                        fullName: event.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email address"
+                    value={customerForm.email}
+                    onChange={(event) =>
+                      setCustomerForm((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="Address"
+                    value={customerForm.address}
+                    onChange={(event) =>
+                      setCustomerForm((current) => ({
+                        ...current,
+                        address: event.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="City"
+                    value={customerForm.city}
+                    onChange={(event) =>
+                      setCustomerForm((current) => ({
+                        ...current,
+                        city: event.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="Postcode"
+                    value={customerForm.postcode}
+                    onChange={(event) =>
+                      setCustomerForm((current) => ({
+                        ...current,
+                        postcode: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="paypal-note">
+                <strong>PayPal checkout is active.</strong>
+                <p>
+                  You will be redirected to PayPal, then brought back here after payment.
+                </p>
+              </div>
+              {paypalError ? <p className="form-error">{paypalError}</p> : null}
+              <button
+                className="button button--primary"
+                type="submit"
+                disabled={paypalBusy || !paypalConfigured}
+              >
+                {paypalBusy ? "Redirecting to PayPal..." : `Pay ${formatMoney(totals.total)} with PayPal`}
+              </button>
+            </form>
 
             <Elements stripe={stripePromise} options={elementsOptions}>
               <StripeCheckoutForm
@@ -780,7 +888,9 @@ export default function CheckoutPage() {
             <strong>{formatMoney(totals.total)}</strong>
           </div>
           <p className="summary-note">
-            {walletMessage}
+            {showPayPalOnly
+              ? "PayPal will open in a secure redirect and bring you back after approval."
+              : walletMessage}
           </p>
         </aside>
       </div>

@@ -814,6 +814,17 @@ main {
   gap: 1.5rem;
 }
 
+.checkout-paypal-form {
+  position: relative;
+  z-index: 2;
+}
+
+.checkout-paypal-form .button--primary {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+}
+
 .checkout-block,
 .paypal-note,
 .stripe-note,
