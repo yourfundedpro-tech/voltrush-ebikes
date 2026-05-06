@@ -24,6 +24,7 @@ const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET || "";
 const PAYPAL_ENV = (process.env.PAYPAL_ENV || "sandbox").toLowerCase();
 const PAYPAL_CURRENCY = (process.env.PAYPAL_CURRENCY || "GBP").toUpperCase();
 const APP_URL = process.env.APP_URL || CLIENT_ORIGIN;
+const PAYPAL_CHECKOUT_COOKIE = "voltrush_paypal_checkout";
 const PAYPAL_API_BASE =
   PAYPAL_ENV === "live"
     ? "https://api-m.paypal.com"
@@ -39,6 +40,7 @@ const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY)
   : null;
 const productCatalog = new Map(products.map((product) => [String(product.id), product]));
+const isSecureCookieOrigin = /^https:\/\//i.test(CLIENT_ORIGIN);
 
 app.use(
   cors({
@@ -47,6 +49,7 @@ app.use(
   }),
 );
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 const createSessionToken = (user) =>
@@ -72,6 +75,17 @@ function buildPaymentSummary(paymentRow) {
 
 function roundCurrency(value) {
   return Math.round(value * 100) / 100;
+}
+
+function buildShippingAddress(customerForm) {
+  return [
+    customerForm?.address,
+    customerForm?.city,
+    customerForm?.postcode,
+  ]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .join(", ");
 }
 
 function formatPayPalAmount(value) {
@@ -151,6 +165,40 @@ function requirePayPal(res) {
   }
 
   return true;
+}
+
+function setPayPalCheckoutCookie(res, payload) {
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+
+  res.cookie(PAYPAL_CHECKOUT_COOKIE, encodedPayload, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isSecureCookieOrigin,
+    maxAge: 30 * 60 * 1000,
+  });
+}
+
+function clearPayPalCheckoutCookie(res) {
+  res.clearCookie(PAYPAL_CHECKOUT_COOKIE, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isSecureCookieOrigin,
+  });
+}
+
+function readPayPalCheckoutCookie(req) {
+  const rawCookie = req.cookies?.[PAYPAL_CHECKOUT_COOKIE];
+
+  if (!rawCookie) {
+    return null;
+  }
+
+  try {
+    const decoded = Buffer.from(rawCookie, "base64url").toString("utf8");
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
 }
 
 async function getPayPalAccessToken() {
@@ -708,12 +756,70 @@ app.post("/api/paypal/create-order", authMiddleware, async (req, res) => {
   }
 });
 
+app.post("/api/paypal/start", authMiddleware, async (req, res) => {
+  if (!requirePayPal(res)) {
+    return;
+  }
+
+  try {
+    const checkoutPayload = JSON.parse(String(req.body.checkoutPayload ?? "{}"));
+    const customerForm = checkoutPayload.customerForm ?? {};
+    const items = checkoutPayload.items ?? [];
+
+    if (
+      !String(customerForm.fullName ?? "").trim() ||
+      !String(customerForm.email ?? "").trim() ||
+      !String(customerForm.address ?? "").trim() ||
+      !String(customerForm.city ?? "").trim() ||
+      !String(customerForm.postcode ?? "").trim()
+    ) {
+      return res.status(400).send("Complete your customer and shipping details before using PayPal.");
+    }
+
+    const totals = calculateOrderTotals(items);
+
+    if (!totals) {
+      return res.status(400).send("Cart must contain at least one item.");
+    }
+
+    setPayPalCheckoutCookie(res, {
+      customerForm,
+      items,
+      savedAt: Date.now(),
+    });
+
+    const order = await createPayPalOrder({ user: req.user, totals });
+    const approveLink = order.links?.find((link) => link.rel === "payer-action")?.href;
+
+    if (!approveLink) {
+      return res.status(400).send("PayPal approval link was not returned.");
+    }
+
+    return res.redirect(303, approveLink);
+  } catch (error) {
+    return res.status(400).send(error.message || "Unable to start PayPal checkout.");
+  }
+});
+
 app.post("/api/paypal/capture-order", authMiddleware, async (req, res) => {
   if (!requirePayPal(res)) {
     return;
   }
 
-  const { orderId, items, shippingAddress, customer } = req.body;
+  const savedCheckout = readPayPalCheckoutCookie(req);
+  const orderId = req.body.orderId;
+  const items = req.body.items ?? savedCheckout?.items;
+  const customer =
+    req.body.customer ??
+    (savedCheckout?.customerForm
+      ? {
+          fullName: savedCheckout.customerForm.fullName,
+          email: savedCheckout.customerForm.email,
+        }
+      : null);
+  const shippingAddress =
+    req.body.shippingAddress ??
+    (savedCheckout?.customerForm ? buildShippingAddress(savedCheckout.customerForm) : "");
 
   if (!orderId?.trim()) {
     return res.status(400).json({ message: "PayPal order ID is required." });
@@ -781,6 +887,8 @@ app.post("/api/paypal/capture-order", authMiddleware, async (req, res) => {
       totals,
       paymentDetails: paypalPayment,
     });
+
+    clearPayPalCheckoutCookie(res);
 
     return res.status(201).json({ order: createdOrder });
   } catch (error) {

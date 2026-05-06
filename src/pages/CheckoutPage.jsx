@@ -13,7 +13,6 @@ import { useAuth } from "../state/AuthContext";
 import { useCart } from "../state/CartContext";
 
 const PAYPAL_STORAGE_KEY = "voltrush-paypal-checkout";
-const PAYPAL_TIMEOUT_MS = 15000;
 
 function formatMoney(value) {
   return `$${Number(value).toLocaleString(undefined, {
@@ -476,16 +475,17 @@ export default function CheckoutPage() {
     ? "Use your Railway live domain on Safari after registering that domain in Stripe payment method domains."
     : "";
 
-  async function startPayPalCheckout(event) {
-    event?.preventDefault();
+  function startPayPalCheckout(event) {
     setPayPalError("");
 
     if (!isAuthenticated) {
+      event?.preventDefault();
       navigate("/login", { state: { from: "/checkout" } });
       return;
     }
 
     if (items.length === 0) {
+      event?.preventDefault();
       setPayPalError("Your cart is empty.");
       return;
     }
@@ -497,50 +497,30 @@ export default function CheckoutPage() {
       !customerForm.city.trim() ||
       !customerForm.postcode.trim()
     ) {
+      event?.preventDefault();
       setPayPalError("Complete your customer and shipping details before using PayPal.");
       return;
     }
 
     setPayPalBusy(true);
-
-    try {
-      window.localStorage.setItem(
-        PAYPAL_STORAGE_KEY,
-        JSON.stringify({
-          items,
-          customerForm,
-          savedAt: Date.now(),
-        }),
-      );
-
-      const response = await Promise.race([
-        apiRequest("/api/paypal/create-order", {
-          method: "POST",
-          body: JSON.stringify({ items }),
-        }),
-        new Promise((_, reject) =>
-          window.setTimeout(
-            () =>
-              reject(
-                new Error(
-                  "PayPal took too long to respond. Please try again once, then refresh the page if it still hangs.",
-                ),
-              ),
-            PAYPAL_TIMEOUT_MS,
-          ),
-        ),
-      ]);
-
-      if (!response.approveLink) {
-        throw new Error("PayPal approval link was not returned.");
-      }
-
-      window.location.href = response.approveLink;
-    } catch (error) {
-      setPayPalError(error.message || "Unable to start PayPal checkout.");
-      setPayPalBusy(false);
-    }
+    window.localStorage.setItem(
+      PAYPAL_STORAGE_KEY,
+      JSON.stringify({
+        items,
+        customerForm,
+        savedAt: Date.now(),
+      }),
+    );
   }
+
+  const paypalCheckoutPayload = useMemo(
+    () =>
+      JSON.stringify({
+        items,
+        customerForm,
+      }),
+    [customerForm, items],
+  );
 
   const showPayPalOnly = paypalConfigured;
 
@@ -587,7 +567,13 @@ export default function CheckoutPage() {
             )}
             {paypalConfigured ? (
               <>
-                <form className="checkout-paypal-form" onSubmit={startPayPalCheckout}>
+                <form
+                  className="checkout-paypal-form"
+                  method="post"
+                  action="/api/paypal/start"
+                  onSubmit={startPayPalCheckout}
+                >
+                <input type="hidden" name="checkoutPayload" value={paypalCheckoutPayload} />
                 <div className="checkout-block">
                   <div className="checkout-block__header">
                     <h2>PayPal checkout</h2>
@@ -673,7 +659,13 @@ export default function CheckoutPage() {
 
         {status === "ready" && showPayPalOnly ? (
           <div className="checkout-payment-stack">
-            <form className="checkout-form checkout-paypal-form" onSubmit={startPayPalCheckout}>
+            <form
+              className="checkout-form checkout-paypal-form"
+              method="post"
+              action="/api/paypal/start"
+              onSubmit={startPayPalCheckout}
+            >
+              <input type="hidden" name="checkoutPayload" value={paypalCheckoutPayload} />
               <div className="section-heading">
                 <div>
                   <p className="eyebrow">PayPal</p>
@@ -765,7 +757,13 @@ export default function CheckoutPage() {
 
         {status === "ready" && !showPayPalOnly && stripePromise && elementsOptions ? (
           <div className="checkout-payment-stack">
-            <form className="checkout-form checkout-paypal-form" onSubmit={startPayPalCheckout}>
+            <form
+              className="checkout-form checkout-paypal-form"
+              method="post"
+              action="/api/paypal/start"
+              onSubmit={startPayPalCheckout}
+            >
+              <input type="hidden" name="checkoutPayload" value={paypalCheckoutPayload} />
               <div className="section-heading">
                 <div>
                   <p className="eyebrow">PayPal</p>
