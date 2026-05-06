@@ -872,6 +872,26 @@ main {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.bank-transfer-note,
+.bank-transfer-confirmation {
+  padding: 1rem 1.1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bank-transfer-note p,
+.bank-transfer-confirmation p {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.bank-transfer-grid {
+  display: grid;
+  gap: 0.8rem;
+}
+
 .express-checkout-shell__header {
   display: flex;
   justify-content: space-between;
@@ -1276,6 +1296,11 @@ main {
 .status-pill--open {
   color: #ffd4a6;
   background: rgba(255, 115, 0, 0.16);
+}
+
+.status-pill--awaiting-transfer {
+  color: #ffe7a1;
+  background: rgba(255, 190, 25, 0.16);
 }
 
 .support-form,

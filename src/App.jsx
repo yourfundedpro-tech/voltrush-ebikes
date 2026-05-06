@@ -11,7 +11,6 @@ import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
 import ProductListingPage from "./pages/ProductListingPage";
-import PayPalReturnPage from "./pages/PayPalReturnPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import SignupPage from "./pages/SignupPage";
 
@@ -29,7 +28,6 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/paypal-return" element={<PayPalReturnPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route
           path="/account"

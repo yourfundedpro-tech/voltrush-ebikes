@@ -19,16 +19,16 @@ const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY || "";
 const STRIPE_CURRENCY = (process.env.STRIPE_CURRENCY || "usd").toLowerCase();
 const STRIPE_MERCHANT_COUNTRY = (process.env.STRIPE_MERCHANT_COUNTRY || "US").toUpperCase();
-const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || "";
-const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET || "";
-const PAYPAL_ENV = (process.env.PAYPAL_ENV || "sandbox").toLowerCase();
-const PAYPAL_CURRENCY = (process.env.PAYPAL_CURRENCY || "GBP").toUpperCase();
-const APP_URL = process.env.APP_URL || CLIENT_ORIGIN;
+const BANK_TRANSFER_ACCOUNT_NAME =
+  process.env.BANK_TRANSFER_ACCOUNT_NAME || "VoltRush Electric Mobility Ltd";
+const BANK_TRANSFER_SORT_CODE = process.env.BANK_TRANSFER_SORT_CODE || "00-00-00";
+const BANK_TRANSFER_ACCOUNT_NUMBER =
+  process.env.BANK_TRANSFER_ACCOUNT_NUMBER || "00000000";
+const BANK_TRANSFER_IBAN = process.env.BANK_TRANSFER_IBAN || "";
+const BANK_TRANSFER_BANK_NAME = process.env.BANK_TRANSFER_BANK_NAME || "VoltRush Business Bank";
+const BANK_TRANSFER_REFERENCE_PREFIX =
+  process.env.BANK_TRANSFER_REFERENCE_PREFIX || "VR";
 const PAYPAL_CHECKOUT_COOKIE = "voltrush_paypal_checkout";
-const PAYPAL_API_BASE =
-  PAYPAL_ENV === "live"
-    ? "https://api-m.paypal.com"
-    : "https://api-m.sandbox.paypal.com";
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const isProduction = process.env.NODE_ENV === "production";
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@voltrush.com";
@@ -151,8 +151,34 @@ function requireStripe(res) {
   return true;
 }
 
+function getPayPalClientId() {
+  return String(process.env.PAYPAL_CLIENT_ID || "").trim();
+}
+
+function getPayPalClientSecret() {
+  return String(process.env.PAYPAL_CLIENT_SECRET || "").trim();
+}
+
+function getPayPalEnv() {
+  return String(process.env.PAYPAL_ENV || "sandbox").trim().toLowerCase();
+}
+
+function getPayPalCurrency() {
+  return String(process.env.PAYPAL_CURRENCY || "GBP").trim().toUpperCase();
+}
+
+function getAppUrl() {
+  return String(process.env.APP_URL || CLIENT_ORIGIN).trim();
+}
+
+function getPayPalApiBase() {
+  return getPayPalEnv() === "live"
+    ? "https://api-m.paypal.com"
+    : "https://api-m.sandbox.paypal.com";
+}
+
 function isPayPalConfigured() {
-  return Boolean(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET);
+  return Boolean(getPayPalClientId() && getPayPalClientSecret());
 }
 
 function requirePayPal(res) {
@@ -203,10 +229,10 @@ function readPayPalCheckoutCookie(req) {
 
 async function getPayPalAccessToken() {
   const credentials = Buffer.from(
-    `${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`,
+    `${getPayPalClientId()}:${getPayPalClientSecret()}`,
   ).toString("base64");
 
-  const response = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
+  const response = await fetch(`${getPayPalApiBase()}/v1/oauth2/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -226,6 +252,7 @@ async function getPayPalAccessToken() {
 
 async function createPayPalOrder({ user, totals }) {
   const accessToken = await getPayPalAccessToken();
+  const appUrl = getAppUrl();
   const payload = {
     intent: "CAPTURE",
     purchase_units: [
@@ -258,14 +285,14 @@ async function createPayPalOrder({ user, totals }) {
           payment_method_preference: "IMMEDIATE_PAYMENT_REQUIRED",
           brand_name: "VoltRush",
           user_action: "PAY_NOW",
-          return_url: `${APP_URL}/paypal-return`,
-          cancel_url: `${APP_URL}/checkout`,
+          return_url: `${appUrl}/paypal-return`,
+          cancel_url: `${appUrl}/checkout`,
         },
       },
     },
   };
 
-  const response = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
+  const response = await fetch(`${getPayPalApiBase()}/v2/checkout/orders`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -287,7 +314,7 @@ async function createPayPalOrder({ user, totals }) {
 async function capturePayPalOrder(orderId) {
   const accessToken = await getPayPalAccessToken();
   const response = await fetch(
-    `${PAYPAL_API_BASE}/v2/checkout/orders/${orderId}/capture`,
+    `${getPayPalApiBase()}/v2/checkout/orders/${orderId}/capture`,
     {
       method: "POST",
       headers: {
@@ -323,7 +350,10 @@ function getPayPalMethodDetails(order) {
     transactionReference: capture?.id ?? order.id,
     status: capture?.status?.toLowerCase?.() === "completed" ? "paid" : "pending",
     amount: Number(capture?.amount?.value ?? purchaseUnit?.amount?.value ?? 0),
-    currency: capture?.amount?.currency_code ?? purchaseUnit?.amount?.currency_code ?? PAYPAL_CURRENCY,
+    currency:
+      capture?.amount?.currency_code ??
+      purchaseUnit?.amount?.currency_code ??
+      getPayPalCurrency(),
     billingName:
       [payer.name?.given_name, payer.name?.surname].filter(Boolean).join(" ") || "",
     billingEmail: payer.email_address ?? "",
@@ -465,6 +495,82 @@ function getStripeMethodDetails(paymentIntent) {
   };
 }
 
+function getBankTransferDetails(orderNumber) {
+  return {
+    accountName: BANK_TRANSFER_ACCOUNT_NAME,
+    bankName: BANK_TRANSFER_BANK_NAME,
+    sortCode: BANK_TRANSFER_SORT_CODE,
+    accountNumber: BANK_TRANSFER_ACCOUNT_NUMBER,
+    iban: BANK_TRANSFER_IBAN || null,
+    reference: `${BANK_TRANSFER_REFERENCE_PREFIX}-${orderNumber}`,
+  };
+}
+
+function createAwaitingTransferOrder({
+  userId,
+  customer,
+  shippingAddress,
+  totals,
+}) {
+  const orderNumber = `VR-${Math.floor(10000 + Math.random() * 89999)}`;
+  const insertItem = db.prepare(`
+    INSERT INTO order_items (order_id, product_name, product_color, quantity, unit_price)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  const createOrder = db.transaction(() => {
+    const orderResult = db
+      .prepare(
+        "INSERT INTO orders (user_id, order_number, total_amount, status, shipping_address) VALUES (?, ?, ?, 'awaiting-transfer', ?)",
+      )
+      .run(userId, orderNumber, totals.total, shippingAddress.trim());
+
+    totals.normalizedItems.forEach((item) => {
+      insertItem.run(
+        orderResult.lastInsertRowid,
+        item.name,
+        item.productColor,
+        item.quantity,
+        item.unitPrice,
+      );
+    });
+
+    const transferDetails = getBankTransferDetails(orderNumber);
+
+    db.prepare(
+      "INSERT INTO notifications (user_id, title, body, type) VALUES (?, ?, ?, ?)",
+    ).run(
+      userId,
+      `Bank transfer needed for ${orderNumber}`,
+      `Send ${transferDetails.reference} with your transfer reference so we can match your payment and start processing.`,
+      "payment",
+    );
+
+    db.prepare(
+      "INSERT INTO notifications (user_id, title, body, type) VALUES (?, ?, ?, ?)",
+    ).run(
+      userId,
+      `Order ${orderNumber} placed`,
+      "Your order is reserved and waiting for your bank transfer before fulfillment starts.",
+      "order",
+    );
+
+    const createdOrder = db
+      .prepare(
+        "SELECT id, order_number, total_amount, status, shipping_address, created_at FROM orders WHERE id = ?",
+      )
+      .get(orderResult.lastInsertRowid);
+
+    return {
+      ...createdOrder,
+      payment: null,
+      transferDetails,
+    };
+  });
+
+  return createOrder();
+}
+
 function setSessionCookie(res, user) {
   res.cookie("voltrush_token", createSessionToken(user), {
     httpOnly: true,
@@ -536,12 +642,24 @@ app.get("/api/payments/config", (_req, res) => {
   });
 });
 
+app.get("/api/bank-transfer/config", (_req, res) => {
+  res.json({
+    accountName: BANK_TRANSFER_ACCOUNT_NAME,
+    bankName: BANK_TRANSFER_BANK_NAME,
+    sortCode: BANK_TRANSFER_SORT_CODE,
+    accountNumber: BANK_TRANSFER_ACCOUNT_NUMBER,
+    iban: BANK_TRANSFER_IBAN || null,
+  });
+});
+
 app.get("/api/paypal/config", (_req, res) => {
   res.json({
     configured: isPayPalConfigured(),
-    clientId: PAYPAL_CLIENT_ID || null,
-    environment: PAYPAL_ENV,
-    currency: PAYPAL_CURRENCY,
+    clientId: getPayPalClientId() || null,
+    environment: getPayPalEnv(),
+    currency: getPayPalCurrency(),
+    hasClientId: Boolean(getPayPalClientId()),
+    hasClientSecret: Boolean(getPayPalClientSecret()),
   });
 });
 
@@ -1125,6 +1243,42 @@ app.post("/api/orders", authMiddleware, (req, res) => {
         message: error.message || "Unable to verify Stripe payment.",
       }),
     );
+});
+
+app.post("/api/orders/bank-transfer", authMiddleware, (req, res) => {
+  const { items, customer, shippingAddress } = req.body;
+
+  if (!customer?.fullName?.trim() || !customer?.email?.trim()) {
+    return res.status(400).json({ message: "Customer name and email are required." });
+  }
+
+  if (!shippingAddress?.trim()) {
+    return res.status(400).json({ message: "Shipping address is required." });
+  }
+
+  let totals;
+
+  try {
+    totals = calculateOrderTotals(items);
+  } catch (error) {
+    return res.status(400).json({ message: error.message || "Invalid cart." });
+  }
+
+  if (!totals) {
+    return res.status(400).json({ message: "Order must contain at least one item." });
+  }
+
+  const createdOrder = createAwaitingTransferOrder({
+    userId: req.user.id,
+    customer,
+    shippingAddress,
+    totals,
+  });
+
+  return res.status(201).json({
+    order: createdOrder,
+    transferDetails: createdOrder.transferDetails,
+  });
 });
 
 app.use(express.static(distPath));

@@ -8,11 +8,18 @@ function formatMoney(value) {
 
 function formatPaymentLabel(payment) {
   if (!payment) {
-    return "Pending payment";
+    return "Bank transfer pending";
   }
 
   const brand = payment.cardBrand ? payment.cardBrand.toUpperCase() : "CARD";
   return `${brand} ending ${payment.cardLast4}`;
+}
+
+function toStatusClass(status) {
+  return String(status ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 export default function AccountDashboardPage() {
@@ -107,7 +114,7 @@ export default function AccountDashboardPage() {
               <div className="dashboard-item" key={order.id}>
                 <div className="dashboard-item__row">
                   <strong>{order.order_number}</strong>
-                  <span className={`status-pill status-pill--${order.status}`}>
+                  <span className={`status-pill status-pill--${toStatusClass(order.status)}`}>
                     {order.status}
                   </span>
                 </div>
@@ -184,8 +191,8 @@ export default function AccountDashboardPage() {
               {dashboard.supportTickets.map((ticket) => (
                 <div className="dashboard-item" key={ticket.id}>
                   <div className="dashboard-item__row">
-                    <strong>{ticket.subject}</strong>
-                    <span className={`status-pill status-pill--${ticket.status}`}>
+                      <strong>{ticket.subject}</strong>
+                    <span className={`status-pill status-pill--${toStatusClass(ticket.status)}`}>
                       {ticket.status}
                     </span>
                   </div>
@@ -212,7 +219,7 @@ export default function AccountDashboardPage() {
                   >
                     <div className="dashboard-item__row">
                       <strong>{order.order_number}</strong>
-                      <span className={`status-pill status-pill--${order.status}`}>
+                      <span className={`status-pill status-pill--${toStatusClass(order.status)}`}>
                         {order.status}
                       </span>
                     </div>
