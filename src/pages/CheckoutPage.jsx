@@ -35,6 +35,8 @@ export default function CheckoutPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [transferDetails, setTransferDetails] = useState(null);
   const [placedOrder, setPlacedOrder] = useState(null);
+  const [placedItems, setPlacedItems] = useState([]);
+  const [placedTotals, setPlacedTotals] = useState(null);
   const [customerForm, setCustomerForm] = useState({
     fullName: user?.name ?? "",
     email: user?.email ?? "",
@@ -59,7 +61,7 @@ export default function CheckoutPage() {
         return;
       }
 
-      if (items.length === 0) {
+      if (items.length === 0 && !placedOrder) {
         setStatus("empty");
         return;
       }
@@ -75,7 +77,7 @@ export default function CheckoutPage() {
     }
 
     prepareCheckout();
-  }, [isAuthenticated, items]);
+  }, [isAuthenticated, items, placedOrder]);
 
   const totals = useMemo(
     () => ({
@@ -119,6 +121,8 @@ export default function CheckoutPage() {
         }),
       });
 
+      setPlacedItems(items);
+      setPlacedTotals(totals);
       setPlacedOrder(data.order);
       setTransferDetails(data.transferDetails);
       setFeedback("Order placed. Send the bank transfer using the reference below.");
@@ -308,11 +312,44 @@ export default function CheckoutPage() {
               {placedOrder ? (
                 <div className="bank-transfer-confirmation">
                   <strong>{placedOrder.order_number} is now reserved.</strong>
+                  <span className="status-pill status-pill--waiting-for-approval">
+                    waiting for approval
+                  </span>
                   <p>
                     Send {formatMoney(placedOrder.total_amount)} with reference{" "}
                     <strong>{placedOrder.transferDetails.reference}</strong>. Once the transfer arrives, the
                     order will stay marked as waiting for approval until you review it.
                   </p>
+                  <div className="checkout-confirmation-list">
+                    {placedItems.map((item) => (
+                      <article className="cart-item" key={`${placedOrder.order_number}-${item.id}`}>
+                        <div className="cart-item__media">
+                          <div className="cart-item__image-wrap">
+                            <img className="cart-item__image" src={item.image} alt={item.name} />
+                          </div>
+                          <div>
+                            <h3>{item.name}</h3>
+                            <p>{item.tagline}</p>
+                            {item.selectedColor ? (
+                              <p className="cart-item__variant">Color: {item.selectedColor}</p>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="cart-item__actions">
+                          <span>{formatMoney(item.price)}</span>
+                          <span>x{item.quantity}</span>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                  {placedTotals ? (
+                    <div className="checkout-confirmation-summary">
+                      <div className="summary-row">
+                        <span>Placed total</span>
+                        <strong>{formatMoney(placedTotals.total)}</strong>
+                      </div>
+                    </div>
+                  ) : null}
                   <button className="button button--primary button--block" type="button" onClick={() => navigate("/account")}>
                     View My Account
                   </button>

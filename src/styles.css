@@ -887,9 +887,20 @@ main {
   line-height: 1.6;
 }
 
+.bank-transfer-confirmation {
+  display: grid;
+  gap: 1rem;
+}
+
 .bank-transfer-grid {
   display: grid;
   gap: 0.8rem;
+}
+
+.checkout-confirmation-list,
+.checkout-confirmation-summary {
+  display: grid;
+  gap: 0.9rem;
 }
 
 .paypal-preview {
@@ -1323,6 +1334,16 @@ main {
 .status-pill--awaiting-transfer {
   color: #ffe7a1;
   background: rgba(255, 190, 25, 0.16);
+}
+
+.status-pill--waiting-for-approval {
+  color: #ffe7a1;
+  background: rgba(255, 190, 25, 0.16);
+}
+
+.status-pill--approved {
+  color: #b8ffd1;
+  background: rgba(46, 156, 78, 0.18);
 }
 
 .support-form,
