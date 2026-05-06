@@ -82,6 +82,7 @@ function buildShippingAddress(customerForm) {
     customerForm?.address,
     customerForm?.city,
     customerForm?.postcode,
+    customerForm?.country,
   ]
     .map((value) => String(value ?? "").trim())
     .filter(Boolean)
@@ -521,7 +522,7 @@ function createAwaitingTransferOrder({
   const createOrder = db.transaction(() => {
     const orderResult = db
       .prepare(
-        "INSERT INTO orders (user_id, order_number, total_amount, status, shipping_address) VALUES (?, ?, ?, 'awaiting-transfer', ?)",
+        "INSERT INTO orders (user_id, order_number, total_amount, status, shipping_address) VALUES (?, ?, ?, 'waiting-for-approval', ?)",
       )
       .run(userId, orderNumber, totals.total, shippingAddress.trim());
 
@@ -551,7 +552,7 @@ function createAwaitingTransferOrder({
     ).run(
       userId,
       `Order ${orderNumber} placed`,
-      "Your order is reserved and waiting for your bank transfer before fulfillment starts.",
+      "Your order is reserved and waiting for approval after your bank transfer is reviewed.",
       "order",
     );
 
@@ -1105,7 +1106,14 @@ app.post("/api/admin/orders/:orderId/update", authMiddleware, ownerOnlyMiddlewar
   const { status, message } = req.body;
   const normalizedStatus = String(status ?? "").trim().toLowerCase();
   const trimmedMessage = String(message ?? "").trim();
-  const allowedStatuses = new Set(["processing", "shipped", "delivered", "open"]);
+  const allowedStatuses = new Set([
+    "waiting-for-approval",
+    "approved",
+    "processing",
+    "shipped",
+    "delivered",
+    "open",
+  ]);
 
   if (!allowedStatuses.has(normalizedStatus)) {
     return res.status(400).json({ message: "Please choose a valid order status." });

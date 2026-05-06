@@ -5,7 +5,7 @@ import { useAuth } from "../state/AuthContext";
 import { useCart } from "../state/CartContext";
 
 function buildShippingAddress(customerForm) {
-  return `${customerForm.address}, ${customerForm.city}, ${customerForm.postcode}`;
+  return `${customerForm.address}, ${customerForm.city}, ${customerForm.postcode}, ${customerForm.country}`;
 }
 
 function formatMoney(value) {
@@ -41,6 +41,7 @@ export default function CheckoutPage() {
     address: "",
     city: "",
     postcode: "",
+    country: "",
   });
 
   useEffect(() => {
@@ -96,7 +97,8 @@ export default function CheckoutPage() {
       !customerForm.email.trim() ||
       !customerForm.address.trim() ||
       !customerForm.city.trim() ||
-      !customerForm.postcode.trim()
+      !customerForm.postcode.trim() ||
+      !customerForm.country.trim()
     ) {
       setError("Complete your customer and shipping details before placing the order.");
       return;
@@ -240,6 +242,17 @@ export default function CheckoutPage() {
                       }))
                     }
                   />
+                  <input
+                    type="text"
+                    placeholder="Country"
+                    value={customerForm.country}
+                    onChange={(event) =>
+                      setCustomerForm((current) => ({
+                        ...current,
+                        country: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
               </div>
 
@@ -267,7 +280,7 @@ export default function CheckoutPage() {
                 <strong>How it works</strong>
                 <p>
                   Place the order first, then send the total by bank transfer using the exact reference we
-                  give you. Your dashboard will show the order as awaiting transfer until payment is
+                  give you. Your dashboard will show the order as waiting for approval until payment is
                   received.
                 </p>
               </div>
@@ -298,7 +311,7 @@ export default function CheckoutPage() {
                   <p>
                     Send {formatMoney(placedOrder.total_amount)} with reference{" "}
                     <strong>{placedOrder.transferDetails.reference}</strong>. Once the transfer arrives, the
-                    order will move into processing.
+                    order will stay marked as waiting for approval until you review it.
                   </p>
                   <button className="button button--primary button--block" type="button" onClick={() => navigate("/account")}>
                     View My Account
