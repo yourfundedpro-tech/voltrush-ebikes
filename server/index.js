@@ -19,6 +19,15 @@ const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY || "";
 const STRIPE_CURRENCY = (process.env.STRIPE_CURRENCY || "usd").toLowerCase();
 const STRIPE_MERCHANT_COUNTRY = (process.env.STRIPE_MERCHANT_COUNTRY || "US").toUpperCase();
+const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || "";
+const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET || "";
+const PAYPAL_ENV = (process.env.PAYPAL_ENV || "sandbox").toLowerCase();
+const PAYPAL_CURRENCY = (process.env.PAYPAL_CURRENCY || "GBP").toUpperCase();
+const APP_URL = process.env.APP_URL || CLIENT_ORIGIN;
+const PAYPAL_API_BASE =
+  PAYPAL_ENV === "live"
+    ? "https://api-m.paypal.com"
+    : "https://api-m.sandbox.paypal.com";
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const isProduction = process.env.NODE_ENV === "production";
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@voltrush.com";
@@ -63,6 +72,10 @@ function buildPaymentSummary(paymentRow) {
 
 function roundCurrency(value) {
   return Math.round(value * 100) / 100;
+}
+
+function formatPayPalAmount(value) {
+  return roundCurrency(value).toFixed(2);
 }
 
 function calculateOrderTotals(items) {
@@ -122,6 +135,259 @@ function requireStripe(res) {
   }
 
   return true;
+}
+
+function isPayPalConfigured() {
+  return Boolean(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET);
+}
+
+function requirePayPal(res) {
+  if (!isPayPalConfigured()) {
+    res.status(503).json({
+      message:
+        "PayPal is not configured yet. Add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET to enable PayPal checkout.",
+    });
+    return false;
+  }
+
+  return true;
+}
+
+async function getPayPalAccessToken() {
+  const credentials = Buffer.from(
+    `${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`,
+  ).toString("base64");
+
+  const response = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || !data.access_token) {
+    throw new Error(data.error_description || data.error || "Unable to authenticate with PayPal.");
+  }
+
+  return data.access_token;
+}
+
+async function createPayPalOrder({ user, totals }) {
+  const accessToken = await getPayPalAccessToken();
+  const payload = {
+    intent: "CAPTURE",
+    purchase_units: [
+      {
+        reference_id: `user-${user.id}`,
+        custom_id: `vr-user-${user.id}`,
+        amount: {
+          currency_code: PAYPAL_CURRENCY,
+          value: formatPayPalAmount(totals.total),
+          breakdown: {
+            item_total: {
+              currency_code: PAYPAL_CURRENCY,
+              value: formatPayPalAmount(totals.subtotal),
+            },
+            shipping: {
+              currency_code: PAYPAL_CURRENCY,
+              value: formatPayPalAmount(totals.shipping),
+            },
+            tax_total: {
+              currency_code: PAYPAL_CURRENCY,
+              value: formatPayPalAmount(totals.tax),
+            },
+          },
+        },
+      },
+    ],
+    payment_source: {
+      paypal: {
+        experience_context: {
+          payment_method_preference: "IMMEDIATE_PAYMENT_REQUIRED",
+          brand_name: "VoltRush",
+          user_action: "PAY_NOW",
+          return_url: `${APP_URL}/paypal-return`,
+          cancel_url: `${APP_URL}/checkout`,
+        },
+      },
+    },
+  };
+
+  const response = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || !data.id) {
+    throw new Error(data.message || "Unable to create PayPal order.");
+  }
+
+  return data;
+}
+
+async function capturePayPalOrder(orderId) {
+  const accessToken = await getPayPalAccessToken();
+  const response = await fetch(
+    `${PAYPAL_API_BASE}/v2/checkout/orders/${orderId}/capture`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+    },
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.message || "Unable to capture PayPal order.");
+  }
+
+  return data;
+}
+
+function getPayPalMethodDetails(order) {
+  const purchaseUnit = order.purchase_units?.[0];
+  const capture =
+    purchaseUnit?.payments?.captures?.[0] ??
+    purchaseUnit?.payments?.authorizations?.[0] ??
+    null;
+  const payer = order.payer ?? {};
+
+  return {
+    provider: "PayPal",
+    methodType: "paypal",
+    cardBrand: "paypal",
+    cardLast4: "PPAL",
+    transactionReference: capture?.id ?? order.id,
+    status: capture?.status?.toLowerCase?.() === "completed" ? "paid" : "pending",
+    amount: Number(capture?.amount?.value ?? purchaseUnit?.amount?.value ?? 0),
+    currency: capture?.amount?.currency_code ?? purchaseUnit?.amount?.currency_code ?? PAYPAL_CURRENCY,
+    billingName:
+      [payer.name?.given_name, payer.name?.surname].filter(Boolean).join(" ") || "",
+    billingEmail: payer.email_address ?? "",
+  };
+}
+
+function createPaidOrderFromPayment({
+  userId,
+  customer,
+  shippingAddress,
+  totals,
+  paymentDetails,
+}) {
+  const orderNumber = `VR-${Math.floor(10000 + Math.random() * 89999)}`;
+  const insertItem = db.prepare(`
+    INSERT INTO order_items (order_id, product_name, product_color, quantity, unit_price)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  const createOrder = db.transaction(() => {
+    const orderResult = db
+      .prepare(
+        "INSERT INTO orders (user_id, order_number, total_amount, status, shipping_address) VALUES (?, ?, ?, 'processing', ?)",
+      )
+      .run(userId, orderNumber, totals.total, shippingAddress.trim());
+
+    totals.normalizedItems.forEach((item) => {
+      insertItem.run(
+        orderResult.lastInsertRowid,
+        item.name,
+        item.productColor,
+        item.quantity,
+        item.unitPrice,
+      );
+    });
+
+    db.prepare(
+      `
+        INSERT INTO payments (
+          order_id,
+          provider,
+          method_type,
+          card_brand,
+          card_last4,
+          billing_name,
+          billing_email,
+          amount,
+          currency,
+          status,
+          transaction_reference
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      orderResult.lastInsertRowid,
+      paymentDetails.provider,
+      paymentDetails.methodType,
+      paymentDetails.cardBrand,
+      paymentDetails.cardLast4,
+      customer.fullName.trim(),
+      customer.email.trim().toLowerCase(),
+      paymentDetails.amount,
+      paymentDetails.currency,
+      paymentDetails.status,
+      paymentDetails.transactionReference,
+    );
+
+    db.prepare(
+      "INSERT INTO notifications (user_id, title, body, type) VALUES (?, ?, ?, ?)",
+    ).run(
+      userId,
+      `Payment received for ${orderNumber}`,
+      paymentDetails.provider === "PayPal"
+        ? "Your PayPal payment has been approved successfully."
+        : `Your ${paymentDetails.cardBrand.toUpperCase()} payment${paymentDetails.methodType === "apple_pay" ? " via Apple Pay" : ""} ending in ${paymentDetails.cardLast4} has been approved.`,
+      "payment",
+    );
+
+    db.prepare(
+      "INSERT INTO notifications (user_id, title, body, type) VALUES (?, ?, ?, ?)",
+    ).run(
+      userId,
+      `Order ${orderNumber} created`,
+      "Your order has been paid successfully and is now queued for fulfillment.",
+      "order",
+    );
+
+    const createdOrder = db
+      .prepare(
+        "SELECT id, order_number, total_amount, status, shipping_address, created_at FROM orders WHERE id = ?",
+      )
+      .get(orderResult.lastInsertRowid);
+
+    return {
+      ...createdOrder,
+      payment: buildPaymentSummary({
+        provider: paymentDetails.provider,
+        method_type: paymentDetails.methodType,
+        card_brand: paymentDetails.cardBrand,
+        card_last4: paymentDetails.cardLast4,
+        billing_name: customer.fullName.trim(),
+        billing_email: customer.email.trim().toLowerCase(),
+        amount: paymentDetails.amount,
+        currency: paymentDetails.currency,
+        status: paymentDetails.status,
+        transaction_reference: paymentDetails.transactionReference,
+        created_at: createdOrder.created_at,
+      }),
+    };
+  });
+
+  return createOrder();
 }
 
 function getStripeMethodDetails(paymentIntent) {
@@ -219,6 +485,14 @@ app.get("/api/payments/config", (_req, res) => {
     publishableKey: STRIPE_PUBLISHABLE_KEY || null,
     currency: STRIPE_CURRENCY,
     merchantCountry: STRIPE_MERCHANT_COUNTRY,
+  });
+});
+
+app.get("/api/paypal/config", (_req, res) => {
+  res.json({
+    configured: isPayPalConfigured(),
+    environment: PAYPAL_ENV,
+    currency: PAYPAL_CURRENCY,
   });
 });
 
@@ -401,6 +675,118 @@ app.post("/api/payments/create-intent", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     return res.status(400).json({ message: error.message || "Unable to create payment." });
+  }
+});
+
+app.post("/api/paypal/create-order", authMiddleware, async (req, res) => {
+  if (!requirePayPal(res)) {
+    return;
+  }
+
+  try {
+    const totals = calculateOrderTotals(req.body.items);
+
+    if (!totals) {
+      return res.status(400).json({ message: "Cart must contain at least one item." });
+    }
+
+    const order = await createPayPalOrder({ user: req.user, totals });
+    const approveLink = order.links?.find((link) => link.rel === "payer-action")?.href;
+
+    return res.status(201).json({
+      orderId: order.id,
+      approveLink: approveLink ?? null,
+      totals: {
+        subtotal: totals.subtotal,
+        shipping: totals.shipping,
+        tax: totals.tax,
+        total: totals.total,
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({ message: error.message || "Unable to start PayPal checkout." });
+  }
+});
+
+app.post("/api/paypal/capture-order", authMiddleware, async (req, res) => {
+  if (!requirePayPal(res)) {
+    return;
+  }
+
+  const { orderId, items, shippingAddress, customer } = req.body;
+
+  if (!orderId?.trim()) {
+    return res.status(400).json({ message: "PayPal order ID is required." });
+  }
+
+  if (!customer?.fullName?.trim() || !customer?.email?.trim()) {
+    return res.status(400).json({ message: "Customer name and email are required." });
+  }
+
+  if (!shippingAddress?.trim()) {
+    return res.status(400).json({ message: "Shipping address is required." });
+  }
+
+  let totals;
+
+  try {
+    totals = calculateOrderTotals(items);
+  } catch (error) {
+    return res.status(400).json({ message: error.message || "Invalid cart." });
+  }
+
+  if (!totals) {
+    return res.status(400).json({ message: "Order must contain at least one item." });
+  }
+
+  try {
+    const existingPayment = db
+      .prepare(
+        `
+          SELECT orders.id, orders.order_number, orders.total_amount, orders.status, orders.shipping_address, orders.created_at
+          FROM payments
+          JOIN orders ON orders.id = payments.order_id
+          WHERE payments.transaction_reference = ?
+        `,
+      )
+      .get(orderId.trim());
+
+    if (existingPayment) {
+      return res.json({ order: existingPayment });
+    }
+
+    const order = await capturePayPalOrder(orderId.trim());
+    const purchaseUnit = order.purchase_units?.[0];
+    const capture = purchaseUnit?.payments?.captures?.[0] ?? null;
+
+    if (!capture || capture.status !== "COMPLETED") {
+      return res.status(400).json({
+        message: "PayPal payment has not completed yet. Please try again in a moment.",
+      });
+    }
+
+    const paidAmount = Number(capture.amount?.value ?? 0);
+
+    if (roundCurrency(paidAmount) !== roundCurrency(totals.total)) {
+      return res.status(400).json({
+        message: "PayPal payment amount does not match the current cart total.",
+      });
+    }
+
+    const paypalPayment = getPayPalMethodDetails(order);
+    const createdOrder = createPaidOrderFromPayment({
+      userId: req.user.id,
+      customer,
+      shippingAddress,
+      totals,
+      paymentDetails: paypalPayment,
+    });
+
+    return res.status(201).json({ order: createdOrder });
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message || "Unable to capture PayPal payment.",
+    });
   }
 });
 
@@ -615,103 +1001,15 @@ app.post("/api/orders", authMiddleware, (req, res) => {
       }
 
       const stripePayment = getStripeMethodDetails(paymentIntent);
-      const orderNumber = `VR-${Math.floor(10000 + Math.random() * 89999)}`;
-      const insertItem = db.prepare(`
-        INSERT INTO order_items (order_id, product_name, product_color, quantity, unit_price)
-        VALUES (?, ?, ?, ?, ?)
-      `);
-
-      const createOrder = db.transaction(() => {
-        const orderResult = db
-          .prepare(
-            "INSERT INTO orders (user_id, order_number, total_amount, status, shipping_address) VALUES (?, ?, ?, 'processing', ?)",
-          )
-          .run(req.user.id, orderNumber, totals.total, shippingAddress.trim());
-
-        totals.normalizedItems.forEach((item) => {
-          insertItem.run(
-            orderResult.lastInsertRowid,
-            item.name,
-            item.productColor,
-            item.quantity,
-            item.unitPrice,
-          );
-        });
-
-        db.prepare(
-          `
-            INSERT INTO payments (
-              order_id,
-              provider,
-              method_type,
-              card_brand,
-              card_last4,
-              billing_name,
-              billing_email,
-              amount,
-              currency,
-              status,
-              transaction_reference
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `,
-        ).run(
-          orderResult.lastInsertRowid,
-          stripePayment.provider,
-          stripePayment.methodType,
-          stripePayment.cardBrand,
-          stripePayment.cardLast4,
-          customer.fullName.trim(),
-          customer.email.trim().toLowerCase(),
-          stripePayment.amount,
-          stripePayment.currency,
-          stripePayment.status,
-          stripePayment.transactionReference,
-        );
-
-        db.prepare(
-          "INSERT INTO notifications (user_id, title, body, type) VALUES (?, ?, ?, ?)",
-        ).run(
-          req.user.id,
-          `Payment received for ${orderNumber}`,
-          `Your ${stripePayment.cardBrand.toUpperCase()} payment${stripePayment.methodType === "apple_pay" ? " via Apple Pay" : ""} ending in ${stripePayment.cardLast4} has been approved.`,
-          "payment",
-        );
-
-        db.prepare(
-          "INSERT INTO notifications (user_id, title, body, type) VALUES (?, ?, ?, ?)",
-        ).run(
-          req.user.id,
-          `Order ${orderNumber} created`,
-          "Your order has been paid successfully and is now queued for fulfillment.",
-          "order",
-        );
-
-        const createdOrder = db
-          .prepare(
-            "SELECT id, order_number, total_amount, status, shipping_address, created_at FROM orders WHERE id = ?",
-          )
-          .get(orderResult.lastInsertRowid);
-
-        return {
-          ...createdOrder,
-          payment: buildPaymentSummary({
-            provider: stripePayment.provider,
-            method_type: stripePayment.methodType,
-            card_brand: stripePayment.cardBrand,
-            card_last4: stripePayment.cardLast4,
-            billing_name: customer.fullName.trim(),
-            billing_email: customer.email.trim().toLowerCase(),
-            amount: stripePayment.amount,
-            currency: stripePayment.currency,
-            status: stripePayment.status,
-            transaction_reference: stripePayment.transactionReference,
-            created_at: createdOrder.created_at,
-          }),
-        };
+      const createdOrder = createPaidOrderFromPayment({
+        userId: req.user.id,
+        customer,
+        shippingAddress,
+        totals,
+        paymentDetails: stripePayment,
       });
 
-      return res.status(201).json({ order: createOrder() });
+      return res.status(201).json({ order: createdOrder });
     })
     .catch((error) =>
       res.status(400).json({

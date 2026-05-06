@@ -12,6 +12,8 @@ import { apiRequest } from "../lib/api";
 import { useAuth } from "../state/AuthContext";
 import { useCart } from "../state/CartContext";
 
+const PAYPAL_STORAGE_KEY = "voltrush-paypal-checkout";
+
 function formatMoney(value) {
   return `$${Number(value).toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -45,6 +47,8 @@ function StripeCheckoutForm({
   clearCart,
   navigate,
   totals,
+  walletMessage,
+  walletHint,
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -306,11 +310,11 @@ function StripeCheckoutForm({
           <div className="express-checkout-shell__header">
             <strong>Fast checkout</strong>
             <span>
-              {walletsReady.includes("applePay")
-                ? "Apple Pay is available on this device."
-                : "Apple Pay will appear automatically on supported Apple devices."}
+              {walletsReady.includes("applePay") ? "Apple Pay is available on this device." : walletMessage}
             </span>
           </div>
+
+          {walletHint ? <p className="express-checkout-shell__hint">{walletHint}</p> : null}
 
           <ExpressCheckoutElement
             onConfirm={handleExpressConfirm}
@@ -364,6 +368,9 @@ export default function CheckoutPage() {
   const [clientSecret, setClientSecret] = useState("");
   const [status, setStatus] = useState("loading");
   const [setupError, setSetupError] = useState("");
+  const [paypalConfigured, setPayPalConfigured] = useState(false);
+  const [paypalBusy, setPayPalBusy] = useState(false);
+  const [paypalError, setPayPalError] = useState("");
   const [serverTotals, setServerTotals] = useState(null);
   const [customerForm, setCustomerForm] = useState({
     fullName: user?.name ?? "",
@@ -372,6 +379,9 @@ export default function CheckoutPage() {
     city: "",
     postcode: "",
   });
+  const isLocalHost =
+    typeof window !== "undefined" &&
+    ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
   useEffect(() => {
     setCustomerForm((current) => ({
@@ -397,6 +407,9 @@ export default function CheckoutPage() {
       setSetupError("");
 
       try {
+        const paypalConfig = await apiRequest("/api/paypal/config", { method: "GET" });
+        setPayPalConfigured(Boolean(paypalConfig.configured));
+
         const config = await apiRequest("/api/payments/config", { method: "GET" });
 
         if (!config.configured || !config.publishableKey) {
@@ -454,6 +467,66 @@ export default function CheckoutPage() {
     total: summary.total,
   };
 
+  const walletMessage = isLocalHost
+    ? "Apple Pay needs your live HTTPS domain, so it will not fully appear on localhost."
+    : "Apple Pay will appear automatically on supported Apple devices and Safari.";
+
+  const walletHint = isLocalHost
+    ? "Use your Railway live domain on Safari after registering that domain in Stripe payment method domains."
+    : "";
+
+  async function startPayPalCheckout() {
+    setPayPalError("");
+
+    if (!isAuthenticated) {
+      navigate("/login", { state: { from: "/checkout" } });
+      return;
+    }
+
+    if (items.length === 0) {
+      setPayPalError("Your cart is empty.");
+      return;
+    }
+
+    if (
+      !customerForm.fullName.trim() ||
+      !customerForm.email.trim() ||
+      !customerForm.address.trim() ||
+      !customerForm.city.trim() ||
+      !customerForm.postcode.trim()
+    ) {
+      setPayPalError("Complete your customer and shipping details before using PayPal.");
+      return;
+    }
+
+    setPayPalBusy(true);
+
+    try {
+      window.localStorage.setItem(
+        PAYPAL_STORAGE_KEY,
+        JSON.stringify({
+          items,
+          customerForm,
+          savedAt: Date.now(),
+        }),
+      );
+
+      const response = await apiRequest("/api/paypal/create-order", {
+        method: "POST",
+        body: JSON.stringify({ items }),
+      });
+
+      if (!response.approveLink) {
+        throw new Error("PayPal approval link was not returned.");
+      }
+
+      window.location.href = response.approveLink;
+    } catch (error) {
+      setPayPalError(error.message || "Unable to start PayPal checkout.");
+      setPayPalBusy(false);
+    }
+  }
+
   return (
     <section className="section page-top">
       <div className="container checkout-layout">
@@ -487,21 +560,204 @@ export default function CheckoutPage() {
 
         {status === "error" || status === "not-configured" ? (
           <div className="checkout-form">
-            <p className="form-error">{setupError}</p>
+            {paypalConfigured ? (
+              <p className="form-success">
+                PayPal checkout is active. Stripe is optional and is not configured on
+                this machine right now.
+              </p>
+            ) : (
+              <p className="form-error">{setupError}</p>
+            )}
+            {paypalConfigured ? (
+              <>
+                <div className="checkout-block">
+                  <div className="checkout-block__header">
+                    <h2>PayPal checkout</h2>
+                    <span>Use your PayPal account or guest checkout</span>
+                  </div>
+                  <div className="form-grid">
+                    <input
+                      type="text"
+                      placeholder="Full name"
+                      value={customerForm.fullName}
+                      onChange={(event) =>
+                        setCustomerForm((current) => ({
+                          ...current,
+                          fullName: event.target.value,
+                        }))
+                      }
+                    />
+                    <input
+                      type="email"
+                      placeholder="Email address"
+                      value={customerForm.email}
+                      onChange={(event) =>
+                        setCustomerForm((current) => ({
+                          ...current,
+                          email: event.target.value,
+                        }))
+                      }
+                    />
+                    <input
+                      type="text"
+                      placeholder="Address"
+                      value={customerForm.address}
+                      onChange={(event) =>
+                        setCustomerForm((current) => ({
+                          ...current,
+                          address: event.target.value,
+                        }))
+                      }
+                    />
+                    <input
+                      type="text"
+                      placeholder="City"
+                      value={customerForm.city}
+                      onChange={(event) =>
+                        setCustomerForm((current) => ({
+                          ...current,
+                          city: event.target.value,
+                        }))
+                      }
+                    />
+                    <input
+                      type="text"
+                      placeholder="Postcode"
+                      value={customerForm.postcode}
+                      onChange={(event) =>
+                        setCustomerForm((current) => ({
+                          ...current,
+                          postcode: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="paypal-note">
+                  <strong>PayPal is configured.</strong>
+                  <p>
+                    You can still continue with PayPal even if Stripe is not configured on
+                    this machine yet.
+                  </p>
+                </div>
+                {paypalError ? <p className="form-error">{paypalError}</p> : null}
+                <button
+                  className="button button--primary"
+                  type="button"
+                  onClick={startPayPalCheckout}
+                  disabled={paypalBusy}
+                >
+                  {paypalBusy ? "Redirecting to PayPal..." : `Pay ${formatMoney(totals.total)} with PayPal`}
+                </button>
+              </>
+            ) : null}
           </div>
         ) : null}
 
         {status === "ready" && stripePromise && elementsOptions ? (
-          <Elements stripe={stripePromise} options={elementsOptions}>
-            <StripeCheckoutForm
-              customerForm={customerForm}
-              setCustomerForm={setCustomerForm}
-              items={items}
-              clearCart={clearCart}
-              navigate={navigate}
-              totals={totals}
-            />
-          </Elements>
+          <div className="checkout-payment-stack">
+            <div className="checkout-form">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">PayPal</p>
+                  <h1>Pay quickly with PayPal.</h1>
+                </div>
+              </div>
+
+              <div className="checkout-block">
+                <div className="checkout-block__header">
+                  <h2>Customer details</h2>
+                  <span>Used for delivery and receipt emails</span>
+                </div>
+                <div className="form-grid">
+                  <input
+                    type="text"
+                    placeholder="Full name"
+                    value={customerForm.fullName}
+                    onChange={(event) =>
+                      setCustomerForm((current) => ({
+                        ...current,
+                        fullName: event.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email address"
+                    value={customerForm.email}
+                    onChange={(event) =>
+                      setCustomerForm((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="Address"
+                    value={customerForm.address}
+                    onChange={(event) =>
+                      setCustomerForm((current) => ({
+                        ...current,
+                        address: event.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="City"
+                    value={customerForm.city}
+                    onChange={(event) =>
+                      setCustomerForm((current) => ({
+                        ...current,
+                        city: event.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="Postcode"
+                    value={customerForm.postcode}
+                    onChange={(event) =>
+                      setCustomerForm((current) => ({
+                        ...current,
+                        postcode: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="paypal-note">
+                <strong>PayPal checkout is active.</strong>
+                <p>
+                  You will be redirected to PayPal, then brought back here after payment.
+                </p>
+              </div>
+              {paypalError ? <p className="form-error">{paypalError}</p> : null}
+              <button
+                className="button button--primary"
+                type="button"
+                onClick={startPayPalCheckout}
+                disabled={paypalBusy || !paypalConfigured}
+              >
+                {paypalBusy ? "Redirecting to PayPal..." : `Pay ${formatMoney(totals.total)} with PayPal`}
+              </button>
+            </div>
+
+            <Elements stripe={stripePromise} options={elementsOptions}>
+              <StripeCheckoutForm
+                customerForm={customerForm}
+                setCustomerForm={setCustomerForm}
+                items={items}
+                clearCart={clearCart}
+                navigate={navigate}
+                totals={totals}
+                walletMessage={walletMessage}
+                walletHint={walletHint}
+              />
+            </Elements>
+          </div>
         ) : null}
 
         <aside className="summary-card">
@@ -524,7 +780,7 @@ export default function CheckoutPage() {
             <strong>{formatMoney(totals.total)}</strong>
           </div>
           <p className="summary-note">
-            Apple Pay availability depends on device, browser, and Stripe domain registration.
+            {walletMessage}
           </p>
         </aside>
       </div>
