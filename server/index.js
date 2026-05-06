@@ -539,6 +539,7 @@ app.get("/api/payments/config", (_req, res) => {
 app.get("/api/paypal/config", (_req, res) => {
   res.json({
     configured: isPayPalConfigured(),
+    clientId: PAYPAL_CLIENT_ID || null,
     environment: PAYPAL_ENV,
     currency: PAYPAL_CURRENCY,
   });

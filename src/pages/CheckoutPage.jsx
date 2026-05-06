@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Elements,
@@ -13,6 +13,10 @@ import { useAuth } from "../state/AuthContext";
 import { useCart } from "../state/CartContext";
 
 const PAYPAL_STORAGE_KEY = "voltrush-paypal-checkout";
+
+function buildShippingAddress(customerForm) {
+  return `${customerForm.address}, ${customerForm.city}, ${customerForm.postcode}`;
+}
 
 function formatMoney(value) {
   return `$${Number(value).toLocaleString(undefined, {
@@ -31,7 +35,7 @@ async function finalizePaidOrder({
     body: JSON.stringify({
       items,
       paymentIntentId,
-      shippingAddress: `${customerForm.address}, ${customerForm.city}, ${customerForm.postcode}`,
+      shippingAddress: buildShippingAddress(customerForm),
       customer: {
         fullName: customerForm.fullName,
         email: customerForm.email,
@@ -360,6 +364,179 @@ function StripeCheckoutForm({
   );
 }
 
+function PayPalButtonsPanel({
+  customerForm,
+  items,
+  isAuthenticated,
+  paypalConfigured,
+  setPayPalError,
+  clearCart,
+  navigate,
+  setPayPalBusy,
+}) {
+  const containerRef = useRef(null);
+  const [paypalClientId, setPayPalClientId] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadConfig() {
+      if (!paypalConfigured) {
+        return;
+      }
+
+      try {
+        const config = await apiRequest("/api/paypal/config", { method: "GET" });
+        if (isMounted) {
+          setPayPalClientId(config.clientId ?? "");
+        }
+      } catch (error) {
+        if (isMounted) {
+          setPayPalError(error.message || "Unable to load PayPal.");
+        }
+      }
+    }
+
+    loadConfig();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [paypalConfigured, setPayPalError]);
+
+  useEffect(() => {
+    if (!paypalConfigured || !paypalClientId || !containerRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function mountButtons() {
+      const existingScript = document.querySelector('script[data-paypal-sdk="true"]');
+
+      if (!existingScript) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(
+            paypalClientId,
+          )}&currency=GBP&intent=capture`;
+          script.async = true;
+          script.dataset.paypalSdk = "true";
+          script.onload = resolve;
+          script.onerror = () => reject(new Error("Unable to load the PayPal SDK."));
+          document.body.appendChild(script);
+        });
+      }
+
+      if (cancelled || !window.paypal || !containerRef.current) {
+        return;
+      }
+
+      containerRef.current.innerHTML = "";
+
+      window.paypal
+        .Buttons({
+          style: {
+            layout: "vertical",
+            color: "gold",
+            shape: "rect",
+            label: "paypal",
+          },
+          onClick() {
+            setPayPalError("");
+
+            if (!isAuthenticated) {
+              setPayPalError("Log in before starting PayPal checkout.");
+              return false;
+            }
+
+            if (
+              !customerForm.fullName.trim() ||
+              !customerForm.email.trim() ||
+              !customerForm.address.trim() ||
+              !customerForm.city.trim() ||
+              !customerForm.postcode.trim()
+            ) {
+              setPayPalError("Complete your customer and shipping details before using PayPal.");
+              return false;
+            }
+
+            return true;
+          },
+          async createOrder() {
+            setPayPalBusy(true);
+            window.localStorage.setItem(
+              PAYPAL_STORAGE_KEY,
+              JSON.stringify({
+                items,
+                customerForm,
+                savedAt: Date.now(),
+              }),
+            );
+
+            const response = await apiRequest("/api/paypal/create-order", {
+              method: "POST",
+              body: JSON.stringify({ items }),
+            });
+
+            if (!response.orderId) {
+              throw new Error("PayPal order ID was not returned.");
+            }
+
+            return response.orderId;
+          },
+          async onApprove(data) {
+            await apiRequest("/api/paypal/capture-order", {
+              method: "POST",
+              body: JSON.stringify({
+                orderId: data.orderID,
+                items,
+                shippingAddress: buildShippingAddress(customerForm),
+                customer: {
+                  fullName: customerForm.fullName,
+                  email: customerForm.email,
+                },
+              }),
+            });
+
+            window.localStorage.removeItem(PAYPAL_STORAGE_KEY);
+            clearCart();
+            navigate("/account");
+          },
+          onCancel() {
+            setPayPalBusy(false);
+          },
+          onError(error) {
+            setPayPalBusy(false);
+            setPayPalError(error?.message || "PayPal checkout failed. Please try again.");
+          },
+        })
+        .render(containerRef.current);
+    }
+
+    mountButtons().catch((error) => {
+      setPayPalBusy(false);
+      setPayPalError(error.message || "Unable to start PayPal.");
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    clearCart,
+    customerForm,
+    isAuthenticated,
+    items,
+    navigate,
+    paypalClientId,
+    paypalConfigured,
+    setPayPalBusy,
+    setPayPalError,
+  ]);
+
+  return <div className="paypal-button-container" ref={containerRef} />;
+}
+
 export default function CheckoutPage() {
   const { summary, items, clearCart } = useCart();
   const { isAuthenticated, user } = useAuth();
@@ -475,53 +652,6 @@ export default function CheckoutPage() {
     ? "Use your Railway live domain on Safari after registering that domain in Stripe payment method domains."
     : "";
 
-  function startPayPalCheckout(event) {
-    setPayPalError("");
-
-    if (!isAuthenticated) {
-      event?.preventDefault();
-      navigate("/login", { state: { from: "/checkout" } });
-      return;
-    }
-
-    if (items.length === 0) {
-      event?.preventDefault();
-      setPayPalError("Your cart is empty.");
-      return;
-    }
-
-    if (
-      !customerForm.fullName.trim() ||
-      !customerForm.email.trim() ||
-      !customerForm.address.trim() ||
-      !customerForm.city.trim() ||
-      !customerForm.postcode.trim()
-    ) {
-      event?.preventDefault();
-      setPayPalError("Complete your customer and shipping details before using PayPal.");
-      return;
-    }
-
-    setPayPalBusy(true);
-    window.localStorage.setItem(
-      PAYPAL_STORAGE_KEY,
-      JSON.stringify({
-        items,
-        customerForm,
-        savedAt: Date.now(),
-      }),
-    );
-  }
-
-  const paypalCheckoutPayload = useMemo(
-    () =>
-      JSON.stringify({
-        items,
-        customerForm,
-      }),
-    [customerForm, items],
-  );
-
   const showPayPalOnly = paypalConfigured;
 
   return (
@@ -567,13 +697,6 @@ export default function CheckoutPage() {
             )}
             {paypalConfigured ? (
               <>
-                <form
-                  className="checkout-paypal-form"
-                  method="post"
-                  action="/api/paypal/start"
-                  onSubmit={startPayPalCheckout}
-                >
-                <input type="hidden" name="checkoutPayload" value={paypalCheckoutPayload} />
                 <div className="checkout-block">
                   <div className="checkout-block__header">
                     <h2>PayPal checkout</h2>
@@ -644,14 +767,17 @@ export default function CheckoutPage() {
                   </p>
                 </div>
                 {paypalError ? <p className="form-error">{paypalError}</p> : null}
-                <button
-                  className="button button--primary"
-                  type="submit"
-                  disabled={paypalBusy}
-                >
-                  {paypalBusy ? "Redirecting to PayPal..." : `Pay ${formatMoney(totals.total)} with PayPal`}
-                </button>
-                </form>
+                {paypalBusy ? <p className="summary-note">Opening PayPal...</p> : null}
+                <PayPalButtonsPanel
+                  customerForm={customerForm}
+                  items={items}
+                  isAuthenticated={isAuthenticated}
+                  paypalConfigured={paypalConfigured}
+                  setPayPalError={setPayPalError}
+                  clearCart={clearCart}
+                  navigate={navigate}
+                  setPayPalBusy={setPayPalBusy}
+                />
               </>
             ) : null}
           </div>
@@ -659,13 +785,7 @@ export default function CheckoutPage() {
 
         {status === "ready" && showPayPalOnly ? (
           <div className="checkout-payment-stack">
-            <form
-              className="checkout-form checkout-paypal-form"
-              method="post"
-              action="/api/paypal/start"
-              onSubmit={startPayPalCheckout}
-            >
-              <input type="hidden" name="checkoutPayload" value={paypalCheckoutPayload} />
+            <div className="checkout-form checkout-paypal-form">
               <div className="section-heading">
                 <div>
                   <p className="eyebrow">PayPal</p>
@@ -744,26 +864,24 @@ export default function CheckoutPage() {
                 </p>
               </div>
               {paypalError ? <p className="form-error">{paypalError}</p> : null}
-              <button
-                className="button button--primary"
-                type="submit"
-                disabled={paypalBusy || !paypalConfigured}
-              >
-                {paypalBusy ? "Redirecting to PayPal..." : `Pay ${formatMoney(totals.total)} with PayPal`}
-              </button>
-            </form>
+              {paypalBusy ? <p className="summary-note">Opening PayPal...</p> : null}
+              <PayPalButtonsPanel
+                customerForm={customerForm}
+                items={items}
+                isAuthenticated={isAuthenticated}
+                paypalConfigured={paypalConfigured}
+                setPayPalError={setPayPalError}
+                clearCart={clearCart}
+                navigate={navigate}
+                setPayPalBusy={setPayPalBusy}
+              />
+            </div>
           </div>
         ) : null}
 
         {status === "ready" && !showPayPalOnly && stripePromise && elementsOptions ? (
           <div className="checkout-payment-stack">
-            <form
-              className="checkout-form checkout-paypal-form"
-              method="post"
-              action="/api/paypal/start"
-              onSubmit={startPayPalCheckout}
-            >
-              <input type="hidden" name="checkoutPayload" value={paypalCheckoutPayload} />
+            <div className="checkout-form checkout-paypal-form">
               <div className="section-heading">
                 <div>
                   <p className="eyebrow">PayPal</p>
@@ -842,14 +960,18 @@ export default function CheckoutPage() {
                 </p>
               </div>
               {paypalError ? <p className="form-error">{paypalError}</p> : null}
-              <button
-                className="button button--primary"
-                type="submit"
-                disabled={paypalBusy || !paypalConfigured}
-              >
-                {paypalBusy ? "Redirecting to PayPal..." : `Pay ${formatMoney(totals.total)} with PayPal`}
-              </button>
-            </form>
+              {paypalBusy ? <p className="summary-note">Opening PayPal...</p> : null}
+              <PayPalButtonsPanel
+                customerForm={customerForm}
+                items={items}
+                isAuthenticated={isAuthenticated}
+                paypalConfigured={paypalConfigured}
+                setPayPalError={setPayPalError}
+                clearCart={clearCart}
+                navigate={navigate}
+                setPayPalBusy={setPayPalBusy}
+              />
+            </div>
 
             <Elements stripe={stripePromise} options={elementsOptions}>
               <StripeCheckoutForm

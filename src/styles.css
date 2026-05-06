@@ -825,6 +825,10 @@ main {
   width: 100%;
 }
 
+.paypal-button-container {
+  min-height: 52px;
+}
+
 .checkout-block,
 .paypal-note,
 .stripe-note,
