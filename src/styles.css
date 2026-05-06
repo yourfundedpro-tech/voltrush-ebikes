@@ -829,6 +829,10 @@ main {
   min-height: 52px;
 }
 
+.paypal-fallback-form {
+  margin-top: 1rem;
+}
+
 .checkout-block,
 .paypal-note,
 .stripe-note,

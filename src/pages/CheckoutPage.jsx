@@ -652,6 +652,47 @@ export default function CheckoutPage() {
     ? "Use your Railway live domain on Safari after registering that domain in Stripe payment method domains."
     : "";
 
+  function startFallbackPayPal(event) {
+    setPayPalError("");
+
+    if (!isAuthenticated) {
+      event.preventDefault();
+      navigate("/login", { state: { from: "/checkout" } });
+      return;
+    }
+
+    if (
+      !customerForm.fullName.trim() ||
+      !customerForm.email.trim() ||
+      !customerForm.address.trim() ||
+      !customerForm.city.trim() ||
+      !customerForm.postcode.trim()
+    ) {
+      event.preventDefault();
+      setPayPalError("Complete your customer and shipping details before using PayPal.");
+      return;
+    }
+
+    setPayPalBusy(true);
+    window.localStorage.setItem(
+      PAYPAL_STORAGE_KEY,
+      JSON.stringify({
+        items,
+        customerForm,
+        savedAt: Date.now(),
+      }),
+    );
+  }
+
+  const paypalCheckoutPayload = useMemo(
+    () =>
+      JSON.stringify({
+        items,
+        customerForm,
+      }),
+    [customerForm, items],
+  );
+
   const showPayPalOnly = paypalConfigured;
 
   return (
@@ -778,6 +819,17 @@ export default function CheckoutPage() {
                   navigate={navigate}
                   setPayPalBusy={setPayPalBusy}
                 />
+                <form
+                  className="paypal-fallback-form"
+                  method="post"
+                  action="/api/paypal/start"
+                  onSubmit={startFallbackPayPal}
+                >
+                  <input type="hidden" name="checkoutPayload" value={paypalCheckoutPayload} />
+                  <button className="button button--primary button--block" type="submit" disabled={paypalBusy}>
+                    {paypalBusy ? "Opening PayPal..." : `Pay ${formatMoney(totals.total)} with PayPal`}
+                  </button>
+                </form>
               </>
             ) : null}
           </div>
@@ -875,6 +927,17 @@ export default function CheckoutPage() {
                 navigate={navigate}
                 setPayPalBusy={setPayPalBusy}
               />
+              <form
+                className="paypal-fallback-form"
+                method="post"
+                action="/api/paypal/start"
+                onSubmit={startFallbackPayPal}
+              >
+                <input type="hidden" name="checkoutPayload" value={paypalCheckoutPayload} />
+                <button className="button button--primary button--block" type="submit" disabled={paypalBusy}>
+                  {paypalBusy ? "Opening PayPal..." : `Pay ${formatMoney(totals.total)} with PayPal`}
+                </button>
+              </form>
             </div>
           </div>
         ) : null}
@@ -971,6 +1034,17 @@ export default function CheckoutPage() {
                 navigate={navigate}
                 setPayPalBusy={setPayPalBusy}
               />
+              <form
+                className="paypal-fallback-form"
+                method="post"
+                action="/api/paypal/start"
+                onSubmit={startFallbackPayPal}
+              >
+                <input type="hidden" name="checkoutPayload" value={paypalCheckoutPayload} />
+                <button className="button button--primary button--block" type="submit" disabled={paypalBusy}>
+                  {paypalBusy ? "Opening PayPal..." : `Pay ${formatMoney(totals.total)} with PayPal`}
+                </button>
+              </form>
             </div>
 
             <Elements stripe={stripePromise} options={elementsOptions}>
