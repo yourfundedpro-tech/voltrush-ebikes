@@ -93,7 +93,7 @@ function formatPayPalAmount(value) {
   return roundCurrency(value).toFixed(2);
 }
 
-function calculateOrderTotals(items) {
+function calculateOrderTotals(items, promoCode = "") {
   if (!Array.isArray(items) || items.length === 0) {
     return null;
   }
@@ -127,16 +127,24 @@ function calculateOrderTotals(items) {
 
   const shipping = itemCount > 0 ? 120 : 0;
   const tax = subtotal * 0.12;
-  const total = roundCurrency(subtotal + shipping + tax);
+  const preDiscountTotal = roundCurrency(subtotal + shipping + tax);
+  const normalizedPromoCode = String(promoCode ?? "").trim().toUpperCase();
+  const discount =
+    normalizedPromoCode === "HAPPY" && preDiscountTotal > 150
+      ? roundCurrency(preDiscountTotal - 150)
+      : 0;
+  const total = roundCurrency(preDiscountTotal - discount);
 
   return {
     itemCount,
     subtotal: roundCurrency(subtotal),
     shipping: roundCurrency(shipping),
     tax: roundCurrency(tax),
+    discount,
     total,
     amount: Math.round(total * 100),
     normalizedItems,
+    promoCode: discount > 0 ? normalizedPromoCode : "",
   };
 }
 
@@ -812,7 +820,7 @@ app.post("/api/payments/create-intent", authMiddleware, async (req, res) => {
   }
 
   try {
-    const totals = calculateOrderTotals(req.body.items);
+    const totals = calculateOrderTotals(req.body.items, req.body.promoCode);
 
     if (!totals) {
       return res.status(400).json({ message: "Cart must contain at least one item." });
@@ -838,8 +846,10 @@ app.post("/api/payments/create-intent", authMiddleware, async (req, res) => {
         subtotal: totals.subtotal,
         shipping: totals.shipping,
         tax: totals.tax,
+        discount: totals.discount,
         total: totals.total,
       },
+      currency: STRIPE_CURRENCY,
     });
   } catch (error) {
     return res.status(400).json({ message: error.message || "Unable to create payment." });
@@ -852,7 +862,7 @@ app.post("/api/paypal/create-order", authMiddleware, async (req, res) => {
   }
 
   try {
-    const totals = calculateOrderTotals(req.body.items);
+    const totals = calculateOrderTotals(req.body.items, req.body.promoCode);
 
     if (!totals) {
       return res.status(400).json({ message: "Cart must contain at least one item." });
@@ -896,7 +906,7 @@ app.post("/api/paypal/start", authMiddleware, async (req, res) => {
       return res.status(400).send("Complete your customer and shipping details before using PayPal.");
     }
 
-    const totals = calculateOrderTotals(items);
+    const totals = calculateOrderTotals(items, checkoutPayload.promoCode);
 
     if (!totals) {
       return res.status(400).send("Cart must contain at least one item.");
@@ -956,7 +966,7 @@ app.post("/api/paypal/capture-order", authMiddleware, async (req, res) => {
   let totals;
 
   try {
-    totals = calculateOrderTotals(items);
+    totals = calculateOrderTotals(items, req.body.promoCode);
   } catch (error) {
     return res.status(400).json({ message: error.message || "Invalid cart." });
   }
@@ -1194,7 +1204,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
   let totals;
 
   try {
-    totals = calculateOrderTotals(items);
+    totals = calculateOrderTotals(items, req.body.promoCode);
   } catch (error) {
     return res.status(400).json({ message: error.message || "Invalid cart." });
   }
@@ -1254,7 +1264,7 @@ app.post("/api/orders", authMiddleware, (req, res) => {
 });
 
 app.post("/api/orders/bank-transfer", authMiddleware, (req, res) => {
-  const { items, customer, shippingAddress } = req.body;
+  const { items, customer, shippingAddress, promoCode } = req.body;
 
   if (!customer?.fullName?.trim() || !customer?.email?.trim()) {
     return res.status(400).json({ message: "Customer name and email are required." });
@@ -1267,7 +1277,7 @@ app.post("/api/orders/bank-transfer", authMiddleware, (req, res) => {
   let totals;
 
   try {
-    totals = calculateOrderTotals(items);
+    totals = calculateOrderTotals(items, promoCode);
   } catch (error) {
     return res.status(400).json({ message: error.message || "Invalid cart." });
   }

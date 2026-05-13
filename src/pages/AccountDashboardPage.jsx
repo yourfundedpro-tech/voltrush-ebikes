@@ -8,7 +8,7 @@ function formatMoney(value) {
 
 function formatPaymentLabel(payment) {
   if (!payment) {
-    return "Bank transfer pending";
+    return "Waiting for approval";
   }
 
   const brand = payment.cardBrand ? payment.cardBrand.toUpperCase() : "CARD";
@@ -247,6 +247,8 @@ export default function AccountDashboardPage() {
                         }))
                       }
                     >
+                      <option value="waiting-for-approval">Waiting for approval</option>
+                      <option value="approved">Approved</option>
                       <option value="processing">Processing</option>
                       <option value="shipped">Shipped</option>
                       <option value="delivered">Delivered</option>

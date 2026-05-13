@@ -897,6 +897,12 @@ main {
   gap: 0.8rem;
 }
 
+.promo-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+}
+
 .checkout-confirmation-list,
 .checkout-confirmation-summary {
   display: grid;
@@ -1552,6 +1558,10 @@ main {
   .spec-grid,
   .form-grid,
   .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .promo-code-row {
     grid-template-columns: 1fr;
   }
 
